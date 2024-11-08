@@ -8,7 +8,11 @@ import os
 import requests
 import base64
 from io import BytesIO
+from toolkit.job import get_job
 
+REFRESH_WORKER = os.environ.get("REFRESH_WORKER", "false").lower() == "true"
+
+'''
 # # Time to wait between API check attempts in milliseconds
 # COMFY_API_AVAILABLE_INTERVAL_MS = 50
 # # Maximum number of API check attempts
@@ -21,7 +25,6 @@ from io import BytesIO
 # COMFY_HOST = "127.0.0.1:8188"
 # # Enforce a clean state after each job is done
 # # see https://docs.runpod.io/docs/handler-additional-controls#refresh-worker
-# REFRESH_WORKER = os.environ.get("REFRESH_WORKER", "false").lower() == "true"
 
 
 # def validate_input(job_input):
@@ -64,303 +67,260 @@ from io import BytesIO
 
 #     # Return validated data and no error
 #     return {"workflow": workflow, "images": images}, None
+'''
+
+from collections import OrderedDict
+import os
+import requests
+from io import BytesIO
+from PIL import Image
+import torch
+from transformers import AutoProcessor, AutoModelForCausalLM
+import uuid
+import shutil
+import json
+
+from toolkit.job import get_job
+
+def run_captioning(images, concept_sentence, *captions):
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    torch_dtype = torch.float16
+    model = AutoModelForCausalLM.from_pretrained(
+        "multimodalart/Florence-2-large-no-flash-attn", torch_dtype=torch_dtype, trust_remote_code=True
+    ).to(device)
+    processor = AutoProcessor.from_pretrained("multimodalart/Florence-2-large-no-flash-attn", trust_remote_code=True)
+
+    captions = list(captions)
+    for i, image_url in enumerate(images):
+        try:
+            response = requests.get(image_url)
+            response.raise_for_status()
+            image = Image.open(BytesIO(response.content)).convert("RGB")
+        except Exception as e:
+            print(f"Error loading image {image_url}: {e}")
+            captions[i] = "Error loading image"
+            continue
+
+        prompt = "<DETAILED_CAPTION>"
+        inputs = processor(text=prompt, images=image, return_tensors="pt").to(device, torch_dtype)
+
+        generated_ids = model.generate(
+            input_ids=inputs["input_ids"], pixel_values=inputs["pixel_values"], max_new_tokens=1024, num_beams=3
+        )
+
+        generated_text = processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
+        parsed_answer = processor.post_process_generation(
+            generated_text, task=prompt, image_size=(image.width, image.height)
+        )
+        caption_text = parsed_answer["<DETAILED_CAPTION>"].replace("The image shows ", "")
+        if concept_sentence:
+            caption_text = f"{caption_text} [trigger]"
+        captions[i] = caption_text
+
+    model.to("cpu")
+    del model
+    del processor
+
+    return captions
+
+def create_dataset(images, captions):
+    print("Creating dataset")
+    destination_folder = f"datasets/{uuid.uuid4()}"
+    if not os.path.exists(destination_folder):
+        os.makedirs(destination_folder)
+
+    jsonl_file_path = os.path.join(destination_folder, "metadata.jsonl")
+    with open(jsonl_file_path, "a") as jsonl_file:
+        for index, image_url in enumerate(images):
+            try:
+                response = requests.get(image_url)
+                response.raise_for_status()
+                image = Image.open(BytesIO(response.content)).convert("RGB")
+                local_image_path = os.path.join(destination_folder, f"image_{index}.jpg")
+                image.save(local_image_path)
+            except Exception as e:
+                print(f"Error saving image {image_url}: {e}")
+                continue
+
+            original_caption = captions[index]
+            file_name = os.path.basename(local_image_path)
+
+            data = {"file_name": file_name, "prompt": original_caption}
+            jsonl_file.write(json.dumps(data) + "\n")
+
+    print(f"Dataset created at: {destination_folder}")
+    return destination_folder
+
+def create_captioned_dataset(image_urls, concept_sentence, *captions):
+    final_captions = run_captioning(image_urls, concept_sentence, *captions)
+    return create_dataset(image_urls, final_captions)
+
+def get_config(name: str, dataset_dir: str, output_dir: str, steps: int = 1000, seed: int = 42):
+    return OrderedDict([
+    ('job', 'extension'),
+    ('config', OrderedDict([
+        # this name will be the folder and filename name
+        ('name', name),
+        ('process', [
+            OrderedDict([
+                ('type', 'sd_trainer'),
+                # root folder to save training sessions/samples/weights
+                ('training_folder', output_dir),
+                # uncomment to see performance stats in the terminal every N steps
+                #('performance_log_every', 1000),
+                ('device', 'cuda:0'),
+                # if a trigger word is specified, it will be added to captions of training data if it does not already exist
+                # alternatively, in your captions you can add [trigger] and it will be replaced with the trigger word
+                # ('trigger_word', 'image'),
+                ('network', OrderedDict([
+                    ('type', 'lora'),
+                    ('linear', 16),
+                    ('linear_alpha', 16)
+                ])),
+                ('save', OrderedDict([
+                    ('dtype', 'float16'),  # precision to save
+                    ('save_every', 250),  # save every this many steps
+                    ('max_step_saves_to_keep', 4)  # how many intermittent saves to keep
+                ])),
+                ('datasets', [
+                    # datasets are a folder of images. captions need to be txt files with the same name as the image
+                    # for instance image2.jpg and image2.txt. Only jpg, jpeg, and png are supported currently
+                    # images will automatically be resized and bucketed into the resolution specified
+                    OrderedDict([
+                        ('folder_path', dataset_dir),
+                        ('caption_ext', 'txt'),
+                        ('caption_dropout_rate', 0.05),  # will drop out the caption 5% of time
+                        ('shuffle_tokens', False),  # shuffle caption order, split by commas
+                        ('cache_latents_to_disk', True),  # leave this true unless you know what you're doing
+                        ('resolution', [512, 768, 1024])  # flux enjoys multiple resolutions
+                    ])
+                ]),
+                ('train', OrderedDict([
+                    ('batch_size', 1),
+                    ('steps', steps),  # total number of steps to train 500 - 4000 is a good range
+                    ('gradient_accumulation_steps', 1),
+                    ('train_unet', True),
+                    ('train_text_encoder', False),  # probably won't work with flux
+                    ('content_or_style', 'balanced'),  # content, style, balanced
+                    ('gradient_checkpointing', True),  # need the on unless you have a ton of vram
+                    ('noise_scheduler', 'flowmatch'),  # for training only
+                    ('optimizer', 'adamw8bit'),
+                    ('lr', 1e-4),
+
+                    # uncomment this to skip the pre training sample
+                    # ('skip_first_sample', True),
+
+                    # uncomment to completely disable sampling
+                    # ('disable_sampling', True),
+
+                    # uncomment to use new vell curved weighting. Experimental but may produce better results
+                    # ('linear_timesteps', True),
+
+                    # ema will smooth out learning, but could slow it down. Recommended to leave on.
+                    ('ema_config', OrderedDict([
+                        ('use_ema', True),
+                        ('ema_decay', 0.99)
+                    ])),
+
+                    # will probably need this if gpu supports it for flux, other dtypes may not work correctly
+                    ('dtype', 'bf16')
+                ])),
+                ('model', OrderedDict([
+                    # huggingface model name or path
+                    ('name_or_path', 'black-forest-labs/FLUX.1-dev'),
+                    ('is_flux', True),
+                    ('quantize', True),  # run 8bit mixed precision
+                    #('low_vram', True),  # uncomment this if the GPU is connected to your monitors. It will use less vram to quantize, but is slower.
+                ])),
+                ('sample', OrderedDict([
+                    ('sampler', 'flowmatch'),  # must match train.noise_scheduler
+                    ('sample_every', 250),  # sample every this many steps
+                    ('width', 1024),
+                    ('height', 1024),
+                    ('prompts', [
+                        # you can add [trigger] to the prompts here and it will be replaced with the trigger word
+                        #'[trigger] holding a sign that says \'I LOVE PROMPTS!\'',
+                        'woman with red hair, playing chess at the park, bomb going off in the background',
+                        'a woman holding a coffee cup, in a beanie, sitting at a cafe',
+                        'a horse is a DJ at a night club, fish eye lens, smoke machine, lazer lights, holding a martini',
+                        'a man showing off his cool new t shirt at the beach, a shark is jumping out of the water in the background',
+                        'a bear building a log cabin in the snow covered mountains',
+                        'woman playing the guitar, on stage, singing a song, laser lights, punk rocker',
+                        'hipster man with a beard, building a chair, in a wood shop',
+                        'photo of a man, white background, medium shot, modeling clothing, studio lighting, white backdrop',
+                        'a man holding a sign that says, \'this is a sign\'',
+                        'a bulldog, in a post apocalyptic world, with a shotgun, in a leather jacket, in a desert, with a motorcycle'
+                    ]),
+                    ('neg', ''),  # not used on flux
+                    ('seed', seed),
+                    ('walk_seed', True),
+                    ('guidance_scale', 4),
+                    ('sample_steps', 20)
+                ]))
+            ])
+        ])
+    ])),
+    # you can add any additional meta info here. [name] is replaced with config name at top
+    ('meta', OrderedDict([
+        ('name', '[name]'),
+        ('version', '1.0')
+    ]))
+])
+
+# Run the captioning
+# final_captions = run_captioning(image_urls, concept_sentence, *captions)
+# print(final_captions)
+
+# # Create the dataset
+# dataset_folder = create_dataset(image_urls, final_captions)
+
+
+def handler(job):
+    """
+    # TODO: docs
+    The main function that handles a job  an image.
+
+    This function validates the input, sends a prompt to ComfyUI for processing,
+    polls ComfyUI for result, and retrieves generated images.
+
+    Args:
+        job (dict): A dictionary containing job details and input parameters.
+
+    Returns:
+        dict: A dictionary containing either an error message or a success status with generated images.
+    """
+    # TODO: validate
+    # validated_data, error_message = validate_input(job_input)
+    # if error_message:
+    #     return {"error": error_message}
+    
+    job_input = job["input"]
+    image_urls = job_input["images"]
+    name = job_input["name"]
+    concept_sentence = job_input.get("concept_sentence", "")
+
+    # image_urls = [
+    #     "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg",
+    #     "https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg"
+    # ]
+    captions = [""] * len(image_urls)
+
+    dataset_folder = create_captioned_dataset(image_urls, concept_sentence, *captions)
+    config = get_config(name, dataset_folder, '/workspace/models/loras')
+    job = get_job(config, name)
+    job.run()
+    job.cleanup()
+
+    # Make sure that the input is valid
+
+    # # Extract validated data
+    # workflow = validated_data["workflow"]
+    # images = validated_data.get("images")
+
+    result = {"result": "test", "refresh_worker": REFRESH_WORKER}
+
+    return result
 
-
-# def check_server(url, retries=500, delay=50):
-#     """
-#     Check if a server is reachable via HTTP GET request
-
-#     Args:
-#     - url (str): The URL to check
-#     - retries (int, optional): The number of times to attempt connecting to the server. Default is 50
-#     - delay (int, optional): The time in milliseconds to wait between retries. Default is 500
-
-#     Returns:
-#     bool: True if the server is reachable within the given number of retries, otherwise False
-#     """
-
-#     for i in range(retries):
-#         try:
-#             response = requests.get(url)
-
-#             # If the response status code is 200, the server is up and running
-#             if response.status_code == 200:
-#                 print(f"runpod-worker-comfy - API is reachable")
-#                 return True
-#         except requests.RequestException as e:
-#             # If an exception occurs, the server may not be ready
-#             pass
-
-#         # Wait for the specified delay before retrying
-#         time.sleep(delay / 1000)
-
-#     print(
-#         f"runpod-worker-comfy - Failed to connect to server at {url} after {retries} attempts."
-#     )
-#     return False
-
-
-# def upload_images(images):
-#     """
-#     Upload a list of base64 encoded images to the ComfyUI server using the /upload/image endpoint.
-
-#     Args:
-#         images (list): A list of dictionaries, each containing the 'name' of the image and the 'image' as a base64 encoded string.
-#         server_address (str): The address of the ComfyUI server.
-
-#     Returns:
-#         list: A list of responses from the server for each image upload.
-#     """
-#     if not images:
-#         return {"status": "success", "message": "No images to upload", "details": []}
-
-#     responses = []
-#     upload_errors = []
-
-#     print(f"runpod-worker-comfy - image(s) upload")
-
-#     for image in images:
-#         name = image["name"]
-#         image_data = image["image"]
-#         blob = base64.b64decode(image_data)
-
-#         # Prepare the form data
-#         files = {
-#             "image": (name, BytesIO(blob), "image/png"),
-#             "overwrite": (None, "true"),
-#         }
-
-#         # POST request to upload the image
-#         response = requests.post(f"http://{COMFY_HOST}/upload/image", files=files)
-#         if response.status_code != 200:
-#             upload_errors.append(f"Error uploading {name}: {response.text}")
-#         else:
-#             responses.append(f"Successfully uploaded {name}")
-
-#     if upload_errors:
-#         print(f"runpod-worker-comfy - image(s) upload with errors")
-#         return {
-#             "status": "error",
-#             "message": "Some images failed to upload",
-#             "details": upload_errors,
-#         }
-
-#     print(f"runpod-worker-comfy - image(s) upload complete")
-#     return {
-#         "status": "success",
-#         "message": "All images uploaded successfully",
-#         "details": responses,
-#     }
-
-
-# def queue_workflow(workflow):
-#     """
-#     Queue a workflow to be processed by ComfyUI
-
-#     Args:
-#         workflow (dict): A dictionary containing the workflow to be processed
-
-#     Returns:
-#         dict: The JSON response from ComfyUI after processing the workflow
-#     """
-
-#     # The top level element "prompt" is required by ComfyUI
-#     data = json.dumps({"prompt": workflow}).encode("utf-8")
-
-#     req = urllib.request.Request(f"http://{COMFY_HOST}/prompt", data=data)
-#     return json.loads(urllib.request.urlopen(req).read())
-
-
-# def get_history(prompt_id):
-#     """
-#     Retrieve the history of a given prompt using its ID
-
-#     Args:
-#         prompt_id (str): The ID of the prompt whose history is to be retrieved
-
-#     Returns:
-#         dict: The history of the prompt, containing all the processing steps and results
-#     """
-#     with urllib.request.urlopen(f"http://{COMFY_HOST}/history/{prompt_id}") as response:
-#         return json.loads(response.read())
-
-
-# def base64_encode(img_path):
-#     """
-#     Returns base64 encoded image.
-
-#     Args:
-#         img_path (str): The path to the image
-
-#     Returns:
-#         str: The base64 encoded image
-#     """
-#     with open(img_path, "rb") as image_file:
-#         encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
-#         return f"{encoded_string}"
-
-
-# import os
-
-# def process_output_images(outputs, job_id):
-#     """
-#     This function takes the "outputs" from image generation and the job ID,
-#     then determines the correct way to return the image, either as a direct URL
-#     to an AWS S3 bucket or as a base64 encoded string, depending on the
-#     environment configuration.
-
-#     Args:
-#         outputs (dict): A dictionary containing the outputs from image generation,
-#                         typically includes node IDs and their respective output data.
-#         job_id (str): The unique identifier for the job.
-
-#     Returns:
-#         dict: A dictionary with the status ('success' or 'error') and the message,
-#               which is either the URL to the image in the AWS S3 bucket or a base64
-#               encoded string of the image. In case of error, the message details the issue.
-
-#     The function works as follows:
-#     - It first determines the output path for the images from an environment variable,
-#       defaulting to "/comfyui/output" if not set.
-#     - It then iterates through the outputs to find the filenames of the generated images.
-#     - After confirming the existence of the image in the output folder, it checks if the
-#       AWS S3 bucket is configured via the BUCKET_ENDPOINT_URL environment variable.
-#     - If AWS S3 is configured, it uploads the image to the bucket and returns the URL.
-#     - If AWS S3 is not configured, it encodes the image in base64 and returns the string.
-#     - If the image file does not exist in the output folder, it returns an error status
-#       with a message indicating the missing image file.
-#     """
-
-#     # The path where ComfyUI stores the generated images
-#     COMFY_OUTPUT_PATH = os.environ.get("COMFY_OUTPUT_PATH", "/comfyui/output")
-
-#     output_images = []
-
-#     print("outputs:", outputs)
-#     print("outputs.items:", outputs.items())
-
-#     for node_id, node_output in outputs.items():
-#         if "images" in node_output:
-#             for image in node_output["images"]:
-#                 image_path = os.path.join(image["subfolder"], image["filename"])
-#                 output_images.append(image_path)
-
-#     print(f"runpod-worker-comfy - image generation is done")
-
-#     results = []
-#     local_image_paths = []
-
-#     for image_path in output_images:
-#         local_image_path = f"{COMFY_OUTPUT_PATH}/{image_path}"
-#         print(f"runpod-worker-comfy - {local_image_path}")
-
-#         if os.path.exists(local_image_path):
-#             local_image_paths.append(local_image_path)
-#         else:
-#             print("runpod-worker-comfy - the image does not exist in the output folder")
-#             results.append({
-#                 "status": "error",
-#                 "message": f"the image does not exist in the specified output folder: {local_image_path}",
-#             })
-
-#     if os.environ.get("BUCKET_ENDPOINT_URL", False):
-#         # Upload all images at once
-#         image_urls = rp_upload.files(job_id, local_image_paths)
-
-#         for image_url in image_urls:
-#             results.append({
-#                 "status": "success",
-#                 "message": image_url,
-#             })
-
-#         print("runpod-worker-comfy - images were uploaded to AWS S3")
-
-#         return results
-
-#     for local_image_path in local_image_paths:
-#         # Base64 encode each image
-#         image = base64_encode(local_image_path)
-#         results.append({
-#             "status": "success",
-#             "message": image,
-#         })
-#         print("runpod-worker-comfy - the image was generated and converted to base64")
-
-#     return results
-
-
-# def handler(job):
-#     """
-#     The main function that handles a job of generating an image.
-
-#     This function validates the input, sends a prompt to ComfyUI for processing,
-#     polls ComfyUI for result, and retrieves generated images.
-
-#     Args:
-#         job (dict): A dictionary containing job details and input parameters.
-
-#     Returns:
-#         dict: A dictionary containing either an error message or a success status with generated images.
-#     """
-#     job_input = job["input"]
-
-#     # Make sure that the input is valid
-#     validated_data, error_message = validate_input(job_input)
-#     if error_message:
-#         return {"error": error_message}
-
-#     # Extract validated data
-#     workflow = validated_data["workflow"]
-#     images = validated_data.get("images")
-
-#     # Make sure that the ComfyUI API is available
-#     check_server(
-#         f"http://{COMFY_HOST}",
-#         COMFY_API_AVAILABLE_MAX_RETRIES,
-#         COMFY_API_AVAILABLE_INTERVAL_MS,
-#     )
-
-#     # Upload images if they exist
-#     upload_result = upload_images(images)
-
-#     if upload_result["status"] == "error":
-#         return upload_result
-
-#     # Queue the workflow
-#     try:
-#         queued_workflow = queue_workflow(workflow)
-#         prompt_id = queued_workflow["prompt_id"]
-#         print(f"runpod-worker-comfy - queued workflow with ID {prompt_id}")
-#     except Exception as e:
-#         return {"error": f"Error queuing workflow: {str(e)}"}
-
-#     # Poll for completion
-#     print(f"runpod-worker-comfy - wait until image generation is complete")
-#     retries = 0
-#     try:
-#         while retries < COMFY_POLLING_MAX_RETRIES:
-#             history = get_history(prompt_id)
-
-#             # Exit the loop if we have found the history
-#             if prompt_id in history and history[prompt_id].get("outputs"):
-#                 break
-#             else:
-#                 # Wait before trying again
-#                 time.sleep(COMFY_POLLING_INTERVAL_MS / 1000)
-#                 retries += 1
-#         else:
-#             return {"error": "Max retries reached while waiting for image generation"}
-#     except Exception as e:
-#         return {"error": f"Error waiting for image generation: {str(e)}"}
-
-#     # Get the generated image and return it as URL in an AWS bucket or as base64
-#     images_result = process_output_images(history[prompt_id].get("outputs"), job["id"])
-
-#     result = {"result":images_result, "refresh_worker": REFRESH_WORKER}
-
-#     return result
-
-from test import my_handler
 # Start the handler only if this script is run directly
 if __name__ == "__main__":
-    runpod.serverless.start({"handler": my_handler})
+    runpod.serverless.start({"handler": handler})
