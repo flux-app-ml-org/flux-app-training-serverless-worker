@@ -360,39 +360,7 @@ from io import BytesIO
 
 #     return result
 
-from flux_train_ui import start_training
-def my_handler(job):
-    start_training(
-        # lora_name
-        "test-lora",
-        # concept_sentence
-        False,
-        # steps
-        1000,
-        # lr
-        0.0004,
-        # rank
-        16,
-        # model_to_train
-        "dev",
-        # low_vram
-        False,
-        # dataset_folder
-        "datasets/test",
-        # sample_1
-        False,
-        # sample_2
-        False,
-        # sample_3
-        False,
-        # use_more_advanced_options
-        False,
-        # more_advanced_options
-        "device: cuda:0"
-   )
-    
-    return 'testing'
-
+from test import my_handler
 # Start the handler only if this script is run directly
 if __name__ == "__main__":
     runpod.serverless.start({"handler": my_handler})
