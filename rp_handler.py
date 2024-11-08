@@ -361,7 +361,7 @@ from io import BytesIO
 #     return result
 
 from flux_train_ui import start_training
-def my_handler():
+def my_handler(job):
     start_training(
         # lora_name
         "test-lora",
