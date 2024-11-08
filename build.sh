@@ -1,0 +1,1 @@
+docker build -t fajyz/flux-app-training-serverless-worker:dev --platform linux/amd64 .

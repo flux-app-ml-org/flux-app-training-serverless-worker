@@ -1,0 +1,14 @@
+function name "start_training"
+    lora_name = test-lora
+    concept_sentence = 
+    steps = 1000
+    lr = 0.0004
+    rank = 16
+    model_to_train = dev
+    low_vram = False
+    dataset_folder = datasets/8c45d22b-beba-4cdd-80cd-29f3368d9e01
+    sample_1 = 
+    sample_2 = 
+    sample_3 = 
+    use_more_advanced_options = False
+    more_advanced_options = device: cuda:0
