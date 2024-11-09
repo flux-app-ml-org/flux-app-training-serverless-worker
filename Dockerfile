@@ -28,11 +28,11 @@ RUN git submodule update --init --recursive
 # RUN source venv/bin/activate
 # .\venv\Scripts\activate on windows
 # install torch first
-RUN pip3 install --upgrade --no-cache-dir torch
-RUN pip3 install --upgrade -r requirements.txt
+RUN python3 -m pip install --upgrade --no-cache-dir torch
+RUN python3 -m pip install --upgrade -r requirements.txt
 
 # Install runpod
-RUN pip3 install runpod requests
+RUN python3 -m pip install runpod requests
 
 # Go back to the root
 WORKDIR /
