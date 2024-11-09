@@ -18,14 +18,17 @@ RUN python -m pip install -r requirements.txt
 
 RUN apt-get install -y tmux nvtop htop
 
-RUN pip install jupyterlab
+# TODO: remove jupyterlab?
+# TODO: add all installs to requirements.txt?
+RUN pip install jupyterlab runpod requests
+ADD rp_handler.py .
 
+# TODO: unmask?
 # mask workspace
 RUN mkdir /workspace
 
 
 # symlink app to workspace
 RUN ln -s /app/ai-toolkit /workspace/ai-toolkit
-
-WORKDIR /
-CMD ["/start.sh"]
+# WORKDIR /
+CMD ["python", "rp_handler.py"]
