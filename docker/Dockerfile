@@ -32,10 +32,10 @@ COPY rp_handler.py test_input.json /workspace/ai-toolkit/
 
 # Install Python dependencies
 WORKDIR /workspace/ai-toolkit
-RUN python -m pip install -r requirements.txt
+RUN python -m pip install --no-cache-dir -r requirements.txt
 
 # Additional Python packages
-RUN python -m pip install jupyterlab runpod requests
+RUN python -m pip install --no-cache-dir jupyterlab runpod requests
 
 # Set command
 CMD ["python", "/workspace/ai-toolkit/rp_handler.py"]
