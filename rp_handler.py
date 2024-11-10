@@ -11,22 +11,9 @@ from io import BytesIO
 from toolkit.job import get_job
 
 REFRESH_WORKER = os.environ.get("REFRESH_WORKER", "false").lower() == "true"
+SAVE_MODEL_TO_FS_PATH = os.environ.get("SAVE_MODEL_TO_FS_PATH", '/runpod-volume/models/loras')
 
 '''
-# # Time to wait between API check attempts in milliseconds
-# COMFY_API_AVAILABLE_INTERVAL_MS = 50
-# # Maximum number of API check attempts
-# COMFY_API_AVAILABLE_MAX_RETRIES = 500
-# # Time to wait between poll attempts in milliseconds
-# COMFY_POLLING_INTERVAL_MS = int(os.environ.get("COMFY_POLLING_INTERVAL_MS", 250))
-# # Maximum number of poll attempts
-# COMFY_POLLING_MAX_RETRIES = int(os.environ.get("COMFY_POLLING_MAX_RETRIES", 500))
-# # Host where ComfyUI is running
-# COMFY_HOST = "127.0.0.1:8188"
-# # Enforce a clean state after each job is done
-# # see https://docs.runpod.io/docs/handler-additional-controls#refresh-worker
-
-
 # def validate_input(job_input):
 #     """
 #     Validates the input for the handler function.
@@ -168,7 +155,7 @@ def get_config(name: str, dataset_dir: str, output_dir: str, steps: int = 1000, 
                 # root folder to save training sessions/samples/weights
                 ('training_folder', output_dir),
                 # uncomment to see performance stats in the terminal every N steps
-                #('performance_log_every', 1000),
+                ('performance_log_every', 1000),
                 ('device', 'cuda:0'),
                 # if a trigger word is specified, it will be added to captions of training data if it does not already exist
                 # alternatively, in your captions you can add [trigger] and it will be replaced with the trigger word
@@ -309,7 +296,7 @@ def handler(job):
     captions = [""] * len(image_urls)
 
     dataset_folder = create_captioned_dataset(image_urls, concept_sentence, *captions)
-    config = get_config(name, dataset_folder, '/workspace/models/loras')
+    config = get_config(name, dataset_folder, SAVE_MODEL_TO_FS_PATH)
     job = get_job(config, name)
     job.run()
     job.cleanup()
