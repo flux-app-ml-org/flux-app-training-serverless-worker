@@ -1,6 +1,7 @@
 import runpod
 from runpod.serverless.utils import rp_upload
 import json
+import logging
 import urllib.request
 import urllib.parse
 import time
@@ -111,10 +112,11 @@ def run_captioning(images, concept_sentence, *captions):
     return captions
 
 def create_dataset(images, captions):
-    print("Creating dataset")
+    logging.info("Creating dataset")
     destination_folder = f"datasets/{uuid.uuid4()}"
     if not os.path.exists(destination_folder):
         os.makedirs(destination_folder)
+        logging.debug(f"Created directory: {destination_folder}")
 
     jsonl_file_path = os.path.join(destination_folder, "metadata.jsonl")
     with open(jsonl_file_path, "a") as jsonl_file:
@@ -125,8 +127,9 @@ def create_dataset(images, captions):
                 image = Image.open(BytesIO(response.content)).convert("RGB")
                 local_image_path = os.path.join(destination_folder, f"image_{index}.jpg")
                 image.save(local_image_path)
+                logging.info(f"Saved image {local_image_path}")
             except Exception as e:
-                print(f"Error saving image {image_url}: {e}")
+                logging.error(f"Error saving image {image_url}: {e}")
                 continue
 
             original_caption = captions[index]
@@ -134,8 +137,9 @@ def create_dataset(images, captions):
 
             data = {"file_name": file_name, "prompt": original_caption}
             jsonl_file.write(json.dumps(data) + "\n")
+            logging.debug(f"Written metadata for {file_name}")
 
-    print(f"Dataset created at: {destination_folder}")
+    logging.info(f"Dataset created at: {destination_folder}")
     return destination_folder
 
 def create_captioned_dataset(image_urls, concept_sentence, *captions):
