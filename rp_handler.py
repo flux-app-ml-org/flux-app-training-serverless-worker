@@ -235,7 +235,8 @@ def get_config(name: str, dataset_dir: str, output_dir: str, steps: int = 1000, 
                 ])),
                 ('sample', OrderedDict([
                     ('sampler', 'flowmatch'),  # must match train.noise_scheduler
-                    ('sample_every', 250),  # sample every this many steps
+                    # TODO: persist sampling results
+                    ('sample_every', steps),  # sample every this many steps
                     ('width', 1024),
                     ('height', 1024),
                     ('prompts', [
