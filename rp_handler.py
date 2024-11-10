@@ -156,6 +156,7 @@ def create_captioned_dataset(image_urls, concept_sentence, *captions):
     return create_dataset(image_urls, final_captions)
 
 def get_config(name: str, dataset_dir: str, output_dir: str, steps: int = 1000, seed: int = 42):
+    # TODO: allow passing config as job input
     return OrderedDict([
     ('job', 'extension'),
     ('config', OrderedDict([
