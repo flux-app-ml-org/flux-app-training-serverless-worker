@@ -35,7 +35,7 @@ WORKDIR /workspace/ai-toolkit
 RUN python -m pip install --no-cache-dir -r requirements.txt
 
 # Additional Python packages
-RUN python -m pip install --no-cache-dir jupyterlab runpod requests
+RUN python -m pip install --no-cache-dir runpod requests
 
 # Set command
 CMD ["python", "/workspace/ai-toolkit/rp_handler.py"]
