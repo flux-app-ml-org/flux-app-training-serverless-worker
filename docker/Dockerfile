@@ -44,7 +44,7 @@ COPY rp_handler.py  test_input.json /workspace/ai-toolkit/
 
 # Mask workspace
 # TODO: unmask?
-RUN mkdir /workspace
+# RUN mkdir /workspace
 
 # Set command
 CMD ["python", "/workspace/ai-toolkit/rp_handler.py"]
