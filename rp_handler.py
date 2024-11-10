@@ -177,11 +177,12 @@ def get_config(name: str, dataset_dir: str, output_dir: str, steps: int = 1000, 
                     ('linear', 16),
                     ('linear_alpha', 16)
                 ])),
-                ('save', OrderedDict([
-                    ('dtype', 'float16'),  # precision to save
-                    ('save_every', 250),  # save every this many steps
-                    ('max_step_saves_to_keep', 4)  # how many intermittent saves to keep
-                ])),
+                # TODO: this pauses the process every N steps, do we need this?
+                # ('save', OrderedDict([
+                #     ('dtype', 'float16'),  # precision to save
+                #     ('save_every', 250),  # save every this many steps
+                #     ('max_step_saves_to_keep', 4)  # how many intermittent saves to keep
+                # ])),
                 ('datasets', [
                     # datasets are a folder of images. captions need to be txt files with the same name as the image
                     # for instance image2.jpg and image2.txt. Only jpg, jpeg, and png are supported currently

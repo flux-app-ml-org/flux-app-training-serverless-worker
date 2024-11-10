@@ -4,8 +4,7 @@ FROM runpod/base:0.6.2-cuda12.2.0 AS base
 LABEL authors="jaret"
 
 # Install basic dependencies
-RUN apt-get update && \
-    apt-get install -y tmux nvtop htop
+RUN apt-get update
 
 # Set up Python environment
 RUN ln -s /usr/bin/python3 /usr/bin/python
