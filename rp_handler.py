@@ -148,6 +148,7 @@ def create_captioned_dataset(image_urls, concept_sentence, *captions):
 
 def get_config(name: str, dataset_dir: str, output_dir: str, steps: int = 1000, seed: int = 42):
     # TODO: allow passing config as job input
+    # TODO: we are saving some `optimizer.pt` along with `.safetensors` - this is not needed, research how to remove
     return OrderedDict([
     ('job', 'extension'),
     ('config', OrderedDict([

@@ -1,9 +1,37 @@
 {
     "input": {
         "images": [
-            "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg",
-            "https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg"
+            "https://i.postimg.cc/ZK9cqx20/000.jpg",
+            "https://i.postimg.cc/4dNvR6pf/001.jpg",
+            "https://i.postimg.cc/cLwBR4sS/002.jpg",
+            "https://i.postimg.cc/zfkwQtb2/003.jpg",
+            "https://i.postimg.cc/vmyL3FB6/004.jpg",
+            "https://i.postimg.cc/7h5gfqBj/005.jpg",
+            "https://i.postimg.cc/rs75473s/006.jpg",
+            "https://i.postimg.cc/fWPc10ys/007.jpg",
+            "https://i.postimg.cc/Dybrhy4X/008.jpg",
+            "https://i.postimg.cc/VkQjkQXH/009.jpg",
+            "https://i.postimg.cc/SKV8dn3w/010.jpg",
+            "https://i.postimg.cc/pLfK9GZV/011.jpg",
+            "https://i.postimg.cc/zfqKTCtC/012.jpg",
+            "https://i.postimg.cc/HxxMhpCj/013.jpg",
+            "https://i.postimg.cc/C5nqwm5g/014.jpg",
+            "https://i.postimg.cc/rmP46v8j/015.jpg",
+            "https://i.postimg.cc/Cdyf5knf/016.jpg",
+            "https://i.postimg.cc/2j1cqYBz/017.jpg",
+            "https://i.postimg.cc/qBWmyF82/018.jpg",
+            "https://i.postimg.cc/FscTZxZ8/019.jpg",
+            "https://i.postimg.cc/htBp37Zj/020.jpg",
+            "https://i.postimg.cc/W4pSscvc/021.jpg",
+            "https://i.postimg.cc/HxV270nS/022.jpg",
+            "https://i.postimg.cc/d0W61Nsk/023.jpg",
+            "https://i.postimg.cc/vBkv716G/024.jpg",
+            "https://i.postimg.cc/zXmjVgrj/025.jpg",
+            "https://i.postimg.cc/4ycQWJzV/026.jpg",
+            "https://i.postimg.cc/J7HxrQ90/027.jpg",
+            "https://i.postimg.cc/ZKrL35Yh/028.jpg",
+            "https://i.postimg.cc/3xYFZQW0/029.jpg"
         ],
-        "name": "test-lora-name"
+        "name": "sergei-test-name-abrakadabra"
     }
 }
