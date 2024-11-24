@@ -1,3 +1,3 @@
 # TODOs
 
-- [ ] Remove sampling from `get_config`: ` ('sample', OrderedDict([...`
+- [x] Remove sampling from `get_config`: ` ('sample', OrderedDict([...`

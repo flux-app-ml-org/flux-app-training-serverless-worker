@@ -226,32 +226,32 @@ def get_config(name: str, dataset_dir: str, output_dir: str, steps: int = 1000, 
                     ('quantize', True),  # run 8bit mixed precision
                     #('low_vram', True),  # uncomment this if the GPU is connected to your monitors. It will use less vram to quantize, but is slower.
                 ])),
-                ('sample', OrderedDict([
-                    ('sampler', 'flowmatch'),  # must match train.noise_scheduler
-                    # TODO: persist sampling results
-                    ('sample_every', steps),  # sample every this many steps
-                    ('width', 1024),
-                    ('height', 1024),
-                    ('prompts', [
-                        # you can add [trigger] to the prompts here and it will be replaced with the trigger word
-                        #'[trigger] holding a sign that says \'I LOVE PROMPTS!\'',
-                        'woman with red hair, playing chess at the park, bomb going off in the background',
-                        'a woman holding a coffee cup, in a beanie, sitting at a cafe',
-                        'a horse is a DJ at a night club, fish eye lens, smoke machine, lazer lights, holding a martini',
-                        'a man showing off his cool new t shirt at the beach, a shark is jumping out of the water in the background',
-                        'a bear building a log cabin in the snow covered mountains',
-                        'woman playing the guitar, on stage, singing a song, laser lights, punk rocker',
-                        'hipster man with a beard, building a chair, in a wood shop',
-                        'photo of a man, white background, medium shot, modeling clothing, studio lighting, white backdrop',
-                        'a man holding a sign that says, \'this is a sign\'',
-                        'a bulldog, in a post apocalyptic world, with a shotgun, in a leather jacket, in a desert, with a motorcycle'
-                    ]),
-                    ('neg', ''),  # not used on flux
-                    ('seed', seed),
-                    ('walk_seed', True),
-                    ('guidance_scale', 4),
-                    ('sample_steps', 20)
-                ]))
+                # ('sample', OrderedDict([
+                #     ('sampler', 'flowmatch'),  # must match train.noise_scheduler
+                #     # TODO: persist sampling results
+                #     ('sample_every', steps),  # sample every this many steps
+                #     ('width', 1024),
+                #     ('height', 1024),
+                #     ('prompts', [
+                #         # you can add [trigger] to the prompts here and it will be replaced with the trigger word
+                #         #'[trigger] holding a sign that says \'I LOVE PROMPTS!\'',
+                #         'woman with red hair, playing chess at the park, bomb going off in the background',
+                #         'a woman holding a coffee cup, in a beanie, sitting at a cafe',
+                #         'a horse is a DJ at a night club, fish eye lens, smoke machine, lazer lights, holding a martini',
+                #         'a man showing off his cool new t shirt at the beach, a shark is jumping out of the water in the background',
+                #         'a bear building a log cabin in the snow covered mountains',
+                #         'woman playing the guitar, on stage, singing a song, laser lights, punk rocker',
+                #         'hipster man with a beard, building a chair, in a wood shop',
+                #         'photo of a man, white background, medium shot, modeling clothing, studio lighting, white backdrop',
+                #         'a man holding a sign that says, \'this is a sign\'',
+                #         'a bulldog, in a post apocalyptic world, with a shotgun, in a leather jacket, in a desert, with a motorcycle'
+                #     ]),
+                #     ('neg', ''),  # not used on flux
+                #     ('seed', seed),
+                #     ('walk_seed', True),
+                #     ('guidance_scale', 4),
+                #     ('sample_steps', 20)
+                # ]))
             ])
         ])
     ])),
