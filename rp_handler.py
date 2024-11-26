@@ -306,13 +306,23 @@ def handler(job):
     job.run()
     job.cleanup()
 
-    # Make sure that the input is valid
+    files_to_delete = ['config.yaml', 'optimizer.pt']
+    print(f"Cleaning up files: {files_to_delete}")
+
+    for file_name in files_to_delete:
+        file_path = os.path.join(SAVE_MODEL_TO_FS_PATH, file_name)
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+            print(f"Deleted: {file_path}")
+        else:
+            print(f"File not found: {file_path}")
 
     # # Extract validated data
     # workflow = validated_data["workflow"]
     # images = validated_data.get("images")
+    SAVE_MODEL_TO_FS_PATH 
 
-    result = {"result": "test", "refresh_worker": REFRESH_WORKER}
+    result = {"result": dataset_folder, "refresh_worker": REFRESH_WORKER}
 
     return result
 
