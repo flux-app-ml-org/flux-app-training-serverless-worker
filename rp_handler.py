@@ -309,6 +309,7 @@ def handler(job):
 
     dataset_folder = create_captioned_dataset(image_urls, concept_sentence, *captions)
     config = get_config(name, dataset_folder, SAVE_MODEL_TO_FS_PATH, gender)
+    print(f"Got config: {config}")
     job = get_job(config, name)
     job.run()
     job.cleanup()
