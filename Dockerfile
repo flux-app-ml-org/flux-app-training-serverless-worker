@@ -33,8 +33,7 @@ COPY rp_handler.py test_input.json /workspace/ai-toolkit/
 # Install Python dependencies
 WORKDIR /workspace/ai-toolkit
 RUN python -m pip install --no-cache-dir -r requirements.txt
-
-RUN python -m pip install --no-cache-dir requests loki_logger_handler==1.1.1
+RUN python -m pip install --no-cache-dir requests runpod loki_logger_handler==1.1.1
 
 # Set command
 CMD ["python", "/workspace/ai-toolkit/rp_handler.py"]
