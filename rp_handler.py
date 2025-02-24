@@ -11,6 +11,39 @@ import requests
 import base64
 from io import BytesIO
 from toolkit.job import get_job
+from loki_logger_handler.loki_logger_handler import LokiLoggerHandler
+import sys
+from collections import OrderedDict
+from PIL import Image
+import torch
+from transformers import AutoProcessor, AutoModelForCausalLM
+import uuid
+import shutil
+
+from toolkit.job import get_job
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+LOKI_URL = os.getenv("LOKI_URL")
+
+if LOKI_URL:
+    logger.info("Configuring Loki logging.")
+    loki_handler = LokiLoggerHandler(
+        url=LOKI_URL,
+        labels={"app": "flux-app-training-serverless-worker"}
+    )
+    logger.addHandler(loki_handler)
+else:
+    logger.warning("Loki credentials not provided, falling back to local logging.")
+    
+    local_handler = logging.StreamHandler(sys.stdout)
+    local_handler.setLevel(logging.DEBUG)
+    
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    local_handler.setFormatter(formatter)
+    
+    logger.addHandler(local_handler)
 
 REFRESH_WORKER = os.environ.get("REFRESH_WORKER", "false").lower() == "true"
 SAVE_MODEL_TO_FS_PATH = os.environ.get("SAVE_MODEL_TO_FS_PATH", '/runpod-volume/models/loras')
@@ -58,19 +91,6 @@ SAVE_MODEL_TO_FS_PATH = os.environ.get("SAVE_MODEL_TO_FS_PATH", '/runpod-volume/
 #     return {"workflow": workflow, "images": images}, None
 '''
 
-from collections import OrderedDict
-import os
-import requests
-from io import BytesIO
-from PIL import Image
-import torch
-from transformers import AutoProcessor, AutoModelForCausalLM
-import uuid
-import shutil
-import json
-
-from toolkit.job import get_job
-
 def run_captioning(images, concept_sentence, *captions):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     torch_dtype = torch.float16
@@ -86,7 +106,7 @@ def run_captioning(images, concept_sentence, *captions):
             response.raise_for_status()
             image = Image.open(BytesIO(response.content)).convert("RGB")
         except Exception as e:
-            print(f"Error loading image {image_url}: {e}")
+            logger.error("Error loading image", extra={"image_url": image_url, "error": str(e)})
             captions[i] = "Error loading image"
             continue
 
@@ -113,11 +133,11 @@ def run_captioning(images, concept_sentence, *captions):
     return captions
 
 def create_dataset(images, captions):
-    logging.info("Creating dataset")
+    logger.info("Creating dataset")
     destination_folder = f"datasets/{uuid.uuid4()}"
     if not os.path.exists(destination_folder):
         os.makedirs(destination_folder)
-        logging.debug(f"Created directory: {destination_folder}")
+        logger.debug("Created directory", extra={"directory": destination_folder})
 
     jsonl_file_path = os.path.join(destination_folder, "metadata.jsonl")
     with open(jsonl_file_path, "a") as jsonl_file:
@@ -128,9 +148,9 @@ def create_dataset(images, captions):
                 image = Image.open(BytesIO(response.content)).convert("RGB")
                 local_image_path = os.path.join(destination_folder, f"image_{index}.jpg")
                 image.save(local_image_path)
-                logging.info(f"Saved image {local_image_path}")
+                logger.info("Saved image", extra={"image_path": local_image_path})
             except Exception as e:
-                logging.error(f"Error saving image {image_url}: {e}")
+                logger.error("Error saving image", extra={"image_url": image_url, "error": str(e)})
                 continue
 
             original_caption = captions[index]
@@ -138,9 +158,9 @@ def create_dataset(images, captions):
 
             data = {"file_name": file_name, "prompt": original_caption}
             jsonl_file.write(json.dumps(data) + "\n")
-            logging.debug(f"Written metadata for {file_name}")
+            logger.debug("Written metadata", extra={"file_name": file_name})
 
-    logging.info(f"Dataset created at: {destination_folder}")
+    logger.info("Dataset created at", extra={"destination_folder": destination_folder})
     return destination_folder
 
 def create_captioned_dataset(image_urls, concept_sentence, *captions):
@@ -309,26 +329,21 @@ def handler(job):
 
     dataset_folder = create_captioned_dataset(image_urls, concept_sentence, *captions)
     config = get_config(name, dataset_folder, SAVE_MODEL_TO_FS_PATH, gender)
-    print(f"Got config: {config}")
+    logger.info("Got config", extra={"config": config})
     job = get_job(config, name)
     job.run()
     job.cleanup()
 
     files_to_delete = ['config.yaml', 'optimizer.pt']
-    print(f"Cleaning up files: {files_to_delete}")
+    logger.info("Cleaning up files", extra={"files": files_to_delete})
 
     for file_name in files_to_delete:
         file_path = os.path.join(SAVE_MODEL_TO_FS_PATH, file_name)
         if os.path.isfile(file_path):
             os.remove(file_path)
-            print(f"Deleted: {file_path}")
+            logger.info("Deleted file", extra={"file_path": file_path})
         else:
-            print(f"File not found: {file_path}")
-
-    # # Extract validated data
-    # workflow = validated_data["workflow"]
-    # images = validated_data.get("images")
-    SAVE_MODEL_TO_FS_PATH 
+            logger.warning("File not found", extra={"file_path": file_path})
 
     result = {"result": dataset_folder, "refresh_worker": REFRESH_WORKER}
 

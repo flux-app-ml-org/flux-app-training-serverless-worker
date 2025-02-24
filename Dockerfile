@@ -29,13 +29,12 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 WORKDIR /workspace
 COPY --from=base /app/ai-toolkit /workspace/ai-toolkit
 COPY rp_handler.py test_input.json /workspace/ai-toolkit/
+COPY requirements.txt /workspace/ai-toolkit/additional_requirements.txt  # Copy the requirements.txt file
 
 # Install Python dependencies
 WORKDIR /workspace/ai-toolkit
 RUN python -m pip install --no-cache-dir -r requirements.txt
-
-# Additional Python packages
-RUN python -m pip install --no-cache-dir runpod requests
+RUN python -m pip install --no-cache-dir -r additional_requirements.txt
 
 # Set command
 CMD ["python", "/workspace/ai-toolkit/rp_handler.py"]
