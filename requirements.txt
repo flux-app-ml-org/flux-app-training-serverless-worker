@@ -1,2 +1,0 @@
-requests
-loki_logger_handler=1.1.1
