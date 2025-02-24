@@ -170,7 +170,10 @@ def create_captioned_dataset(image_urls, concept_sentence, *captions):
 def get_config(name: str, dataset_dir: str, output_dir: str, gender: Literal['F'] | Literal['M'], steps: int = 1000, seed: int = 42):
     # TODO: allow passing config as job input
     # TODO: we are saving some `optimizer.pt` along with `.safetensors` - this is not needed, research how to remove
-    sample_prompt = ['Woman face close up photo, bright frontal white studio light'] if gender == 'F' else ['Man face close up photo, bright frontal white studio light']
+    
+    # TODO: job sometimes fail when generating a sample image,
+    # move to inference worker?
+    # sample_prompt = ['Woman face close up photo, bright frontal white studio light'] if gender == 'F' else ['Man face close up photo, bright frontal white studio light']
 
     return OrderedDict([
     ('job', 'extension'),
@@ -249,34 +252,34 @@ def get_config(name: str, dataset_dir: str, output_dir: str, gender: Literal['F'
                     ('quantize', True),  # run 8bit mixed precision
                     #('low_vram', True),  # uncomment this if the GPU is connected to your monitors. It will use less vram to quantize, but is slower.
                 ])),
-                ('sample', OrderedDict([
-                    ('sampler', 'flowmatch'),  # must match train.noise_scheduler
-                    # TODO: persist sampling results
-                    ('sample_every', steps),  # sample every this many steps
-                    ('width', 1024),
-                    ('height', 1024),
-                    ('prompts', sample_prompt),
-                    # [
-                        # you can add [trigger] to the prompts here and it will be replaced with the trigger word
-                        #'[trigger] holding a sign that says \'I LOVE PROMPTS!\'',
+                # ('sample', OrderedDict([
+                #     ('sampler', 'flowmatch'),  # must match train.noise_scheduler
+                #     # TODO: persist sampling results
+                #     ('sample_every', steps),  # sample every this many steps
+                #     ('width', 1024),
+                #     ('height', 1024),
+                #     ('prompts', sample_prompt),
+                #     # [
+                #         # you can add [trigger] to the prompts here and it will be replaced with the trigger word
+                #         #'[trigger] holding a sign that says \'I LOVE PROMPTS!\'',
                         
-                        # 'woman with red hair, playing chess at the park, bomb going off in the background',
-                        # 'a woman holding a coffee cup, in a beanie, sitting at a cafe',
-                        # 'a horse is a DJ at a night club, fish eye lens, smoke machine, lazer lights, holding a martini',
-                        # 'a man showing off his cool new t shirt at the beach, a shark is jumping out of the water in the background',
-                        # 'a bear building a log cabin in the snow covered mountains',
-                        # 'woman playing the guitar, on stage, singing a song, laser lights, punk rocker',
-                        # 'hipster man with a beard, building a chair, in a wood shop',
-                        # 'photo of a man, white background, medium shot, modeling clothing, studio lighting, white backdrop',
-                        # 'a man holding a sign that says, \'this is a sign\'',
-                        # 'a bulldog, in a post apocalyptic world, with a shotgun, in a leather jacket, in a desert, with a motorcycle'
-                    # ]),
-                    ('neg', ''),  # not used on flux
-                    ('seed', seed),
-                    ('walk_seed', True),
-                    ('guidance_scale', 4),
-                    ('sample_steps', 20)
-                ]))
+                #         # 'woman with red hair, playing chess at the park, bomb going off in the background',
+                #         # 'a woman holding a coffee cup, in a beanie, sitting at a cafe',
+                #         # 'a horse is a DJ at a night club, fish eye lens, smoke machine, lazer lights, holding a martini',
+                #         # 'a man showing off his cool new t shirt at the beach, a shark is jumping out of the water in the background',
+                #         # 'a bear building a log cabin in the snow covered mountains',
+                #         # 'woman playing the guitar, on stage, singing a song, laser lights, punk rocker',
+                #         # 'hipster man with a beard, building a chair, in a wood shop',
+                #         # 'photo of a man, white background, medium shot, modeling clothing, studio lighting, white backdrop',
+                #         # 'a man holding a sign that says, \'this is a sign\'',
+                #         # 'a bulldog, in a post apocalyptic world, with a shotgun, in a leather jacket, in a desert, with a motorcycle'
+                #     # ]),
+                #     ('neg', ''),  # not used on flux
+                #     ('seed', seed),
+                #     ('walk_seed', True),
+                #     ('guidance_scale', 4),
+                #     ('sample_steps', 20)
+                # ]))
             ])
         ])
     ])),
