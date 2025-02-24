@@ -19,6 +19,8 @@ import torch
 from transformers import AutoProcessor, AutoModelForCausalLM
 import uuid
 import shutil
+import boto3
+import glob
 
 from toolkit.job import get_job
 
@@ -297,12 +299,7 @@ def get_config(name: str, dataset_dir: str, output_dir: str, gender: Literal['F'
 
 def handler(job):
     """
-    # TODO: document
-    # TODO: validate input
-    The main function that handles a job  an image.
-
-    This function validates the input, sends a prompt to ComfyUI for processing,
-    polls ComfyUI for result, and retrieves generated images.
+    Handles a job for processing an image.
 
     Args:
         job (dict): A dictionary containing job details and input parameters.
@@ -310,11 +307,6 @@ def handler(job):
     Returns:
         dict: A dictionary containing either an error message or a success status with generated images.
     """
-    # TODO: validate
-    # validated_data, error_message = validate_input(job_input)
-    # if error_message:
-    #     return {"error": error_message}
-    
     job_input = job["input"]
     image_urls = job_input["images"]
     name = job_input["name"]
@@ -345,9 +337,62 @@ def handler(job):
         else:
             logger.warning("File not found", extra={"file_path": file_path})
 
-    result = {"result": dataset_folder, "refresh_worker": REFRESH_WORKER}
+    # S3 upload configuration
+    bucket_name = os.getenv('S3_BUCKET_NAME')  # Ensure this environment variable is set
+    s3_key = os.getenv('S3_KEY_PREFIX', 'training/thumbnails') + os.path.basename(dataset_folder) + '.jpg'  # Customize the S3 key as needed
+
+    # Find the first .jpg image in the samples folder
+    samples_folder = os.path.join(dataset_folder, "samples")
+    jpg_files = glob.glob(os.path.join(samples_folder, "*.jpg"))
+
+    if jpg_files:
+        thumbnail_image_path = jpg_files[0]
+        logger.info("Found thumbnail image", extra={"thumbnail_image_path": thumbnail_image_path})
+    else:
+        logger.error("No .jpg images found in samples folder", extra={"samples_folder": samples_folder})
+
+    if(thumbnail_image_path):
+        thumbnail_url = upload_to_s3(thumbnail_image_path, bucket_name, s3_key)
+
+    if thumbnail_url:
+        result = {
+            "result": {
+                "dataset_folder": dataset_folder,
+                "thumbnail_url": thumbnail_url
+            }
+        }
+    else:
+        result = result = {
+            "result": {
+                "dataset_folder": dataset_folder,
+            }
+        }
+
+    logger.info("Successfully processed job", extra={"result": result})
 
     return result
+
+
+def upload_to_s3(file_path, bucket_name, s3_key):
+    """
+    Uploads a file to an S3 bucket.
+
+    Args:
+        file_path (str): The local path of the file to upload.
+        bucket_name (str): The name of the S3 bucket.
+        s3_key (str): The S3 key (path) to save the file under.
+
+    Returns:
+        str: The URL of the uploaded file.
+    """
+    s3_client = boto3.client('s3')
+    try:
+        s3_client.upload_file(file_path, bucket_name, s3_key)
+        logger.info("Uploaded file to S3", extra={"file_path": file_path, "s3_key": s3_key})
+        return f"s3://{bucket_name}/{s3_key}"
+    except Exception as e:
+        logger.error("Failed to upload file to S3", extra={"file_path": file_path, "error": str(e)})
+        return None
 
 # Start the handler only if this script is run directly
 if __name__ == "__main__":
