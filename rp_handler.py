@@ -334,7 +334,7 @@ def handler(job):
     logger.info(
         "Got config",
         extra={
-            "name": name,
+            "job_name": name,
             "config": json.dumps(config),
             "captions": captions,
             "dataset_folder_path": dataset_folder,
