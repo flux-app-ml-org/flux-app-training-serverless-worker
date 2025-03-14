@@ -1,6 +1,5 @@
 from typing import Literal
 import runpod
-from runpod.serverless.utils import rp_upload
 import json
 import logging
 import urllib.request
@@ -148,7 +147,7 @@ def create_dataset(images, captions):
                 image = Image.open(BytesIO(response.content)).convert("RGB")
                 local_image_path = os.path.join(destination_folder, f"image_{index}.jpg")
                 image.save(local_image_path)
-                logger.info("Saved image", extra={"image_path": local_image_path})
+                logger.info("Saved image", extra={"path": os.path.abspath(local_image_path), "relative_path": local_image_path})
             except Exception as e:
                 logger.error("Error saving image", extra={"image_url": image_url, "error": str(e)})
                 continue
@@ -158,9 +157,9 @@ def create_dataset(images, captions):
 
             data = {"file_name": file_name, "prompt": original_caption}
             jsonl_file.write(json.dumps(data) + "\n")
-            logger.debug("Written metadata", extra={"file_name": file_name})
+            logger.debug("Written metadata", extra={"data": data, "path": os.path.abspath(jsonl_file_path), "relative_path": jsonl_file_path})
 
-    logger.info("Dataset created at", extra={"destination_folder": destination_folder})
+    logger.info("Dataset created", extra={"path": os.path.abspath(destination_folder), "relative_path": destination_folder})
     return destination_folder
 
 def create_captioned_dataset(image_urls, concept_sentence, *captions):
@@ -332,7 +331,16 @@ def handler(job):
 
     dataset_folder = create_captioned_dataset(image_urls, concept_sentence, *captions)
     config = get_config(name, dataset_folder, SAVE_MODEL_TO_FS_PATH, gender)
-    logger.info("Got config", extra={"config": config})
+    logger.info(
+        "Got config",
+        extra={
+            "name": name,
+            "config": json.dumps(config),
+            "captions": captions,
+            "dataset_folder_path": dataset_folder,
+            "dataset_folder_relative_path": os.path.abspath(dataset_folder)
+        }
+    )
     job = get_job(config, name)
     job.run()
     job.cleanup()
