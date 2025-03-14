@@ -154,6 +154,12 @@ def create_dataset(images, captions):
 
             original_caption = captions[index]
             file_name = os.path.basename(local_image_path)
+            
+            # Save the caption to a text file with the same name as the image
+            caption_file_path = os.path.join(destination_folder, f"image_{index}.txt")
+            with open(caption_file_path, "w") as caption_file:
+                caption_file.write(original_caption)
+                logger.info("Saved caption", extra={"path": os.path.abspath(caption_file_path), "relative_path": caption_file_path})
 
             data = {"file_name": file_name, "prompt": original_caption}
             jsonl_file.write(json.dumps(data) + "\n")
