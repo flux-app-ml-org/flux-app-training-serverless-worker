@@ -200,6 +200,38 @@ def handler(job):
 #     return {"workflow": workflow, "images": images}, None
 '''
 
+def generate_caption_for_image(image, processor, model, device, torch_dtype, concept_sentence=False):
+    """
+    Generate a caption for a single image using the Florence model.
+    
+    Args:
+        image (PIL.Image): The image to caption
+        processor: The text processor
+        model: The captioning model
+        device: The device to run inference on
+        torch_dtype: The torch data type
+        concept_sentence (bool): Whether to add a trigger token
+        
+    Returns:
+        str: The generated caption
+    """
+    prompt = "<DETAILED_CAPTION>"
+    inputs = processor(text=prompt, images=image, return_tensors="pt").to(device, torch_dtype)
+
+    generated_ids = model.generate(
+        input_ids=inputs["input_ids"], pixel_values=inputs["pixel_values"], max_new_tokens=1024, num_beams=3
+    )
+
+    generated_text = processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
+    parsed_answer = processor.post_process_generation(
+        generated_text, task=prompt, image_size=(image.width, image.height)
+    )
+    caption_text = parsed_answer["<DETAILED_CAPTION>"].replace("The image shows ", "")
+    if concept_sentence:
+        caption_text = f"{caption_text} [trigger]"
+    
+    return caption_text
+
 def run_captioning(images, concept_sentence, *captions):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     torch_dtype = torch.float16
@@ -219,21 +251,7 @@ def run_captioning(images, concept_sentence, *captions):
             captions[i] = "Error loading image"
             continue
 
-        prompt = "<DETAILED_CAPTION>"
-        inputs = processor(text=prompt, images=image, return_tensors="pt").to(device, torch_dtype)
-
-        generated_ids = model.generate(
-            input_ids=inputs["input_ids"], pixel_values=inputs["pixel_values"], max_new_tokens=1024, num_beams=3
-        )
-
-        generated_text = processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
-        parsed_answer = processor.post_process_generation(
-            generated_text, task=prompt, image_size=(image.width, image.height)
-        )
-        caption_text = parsed_answer["<DETAILED_CAPTION>"].replace("The image shows ", "")
-        if concept_sentence:
-            caption_text = f"{caption_text} [trigger]"
-        captions[i] = caption_text
+        captions[i] = generate_caption_for_image(image, processor, model, device, torch_dtype, concept_sentence)
 
     model.to("cpu")
     del model

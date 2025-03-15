@@ -8,3 +8,9 @@ git checkout build
 git rebase origin/master
 git push
 ```
+
+## Test
+
+```bash
+docker compose -f docker-compose.dev.yaml run test
+```

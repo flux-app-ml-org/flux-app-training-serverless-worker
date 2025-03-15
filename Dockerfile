@@ -29,12 +29,18 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 WORKDIR /workspace
 COPY --from=base /app/ai-toolkit /workspace/ai-toolkit
 COPY rp_handler.py test_input.json /workspace/ai-toolkit/
+COPY tests/ /workspace/ai-toolkit/tests/
+COPY requirements-dev.txt /workspace/ai-toolkit/
 
 # Install Python dependencies
 WORKDIR /workspace/ai-toolkit
 RUN python -m pip install --no-cache-dir -r requirements.txt
 # FIXME: debugpy if dev
 RUN python -m pip install --no-cache-dir requests runpod loki_logger_handler==1.1.1 debugpy
+
+# Install development dependencies if DEV_MODE is set
+ARG DEV_MODE=false
+RUN if [ "$DEV_MODE" = "true" ] ; then python -m pip install --no-cache-dir -r requirements-dev.txt ; fi
 
 # Set command
 CMD ["python", "/workspace/ai-toolkit/rp_handler.py"]

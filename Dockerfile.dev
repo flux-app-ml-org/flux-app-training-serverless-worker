@@ -1,0 +1,23 @@
+FROM python:3.10-slim AS dev
+
+LABEL authors="jaret"
+
+# Install basic dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up working directory
+WORKDIR /workspace
+
+# Copy only what's needed for testing
+COPY requirements-dev.txt /workspace/
+COPY rp_handler.py /workspace/
+COPY tests/ /workspace/tests/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements-dev.txt
+RUN pip install --no-cache-dir requests runpod loki_logger_handler==1.1.1 debugpy pytest
+
+# Set command for development
+CMD ["python", "-m", "pytest", "-xvs", "tests/"]
