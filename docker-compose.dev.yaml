@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  app:
+    image: fajyz/flux-app-training-serverless-worker:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./rp_handler.py:/rp_handler.py
+    network_mode: host
+    ports:
+      # debug port
+      - "5678:5678"
+    command: >
+      python -m debugpy --listen localhost:5678 --wait-for-client /rp_handler.py --test_input '{"input": {"prompt": "The quick brown fox jumps"}}'

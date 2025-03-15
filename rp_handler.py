@@ -2,12 +2,8 @@ from typing import Literal
 import runpod
 import json
 import logging
-import urllib.request
-import urllib.parse
-import time
 import os
 import requests
-import base64
 from io import BytesIO
 from toolkit.job import get_job
 from loki_logger_handler.loki_logger_handler import LokiLoggerHandler
@@ -17,9 +13,6 @@ from PIL import Image
 import torch
 from transformers import AutoProcessor, AutoModelForCausalLM
 import uuid
-import shutil
-
-from toolkit.job import get_job
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -35,18 +28,135 @@ if LOKI_URL:
     logger.addHandler(loki_handler)
 else:
     logger.warning("Loki credentials not provided, falling back to local logging.")
-    
+
+    class JSONFormatter(logging.Formatter):
+        def format(self, record):
+            log_record = {
+                'time': self.formatTime(record),
+                'name': record.name,
+                'level': record.levelname,
+            }
+
+            for attr in vars(record):
+                if attr not in log_record:
+                    log_record[attr] = getattr(record, attr)
+
+            return json.dumps(log_record)
+
     local_handler = logging.StreamHandler(sys.stdout)
     local_handler.setLevel(logging.DEBUG)
-    
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    local_handler.setFormatter(formatter)
-    
+    local_handler.setFormatter(JSONFormatter())
+
     logger.addHandler(local_handler)
 
 REFRESH_WORKER = os.environ.get("REFRESH_WORKER", "false").lower() == "true"
 SAVE_MODEL_TO_FS_PATH = os.environ.get("SAVE_MODEL_TO_FS_PATH", '/runpod-volume/models/loras')
 
+class DictFilter(logging.Filter):
+    def __init__(self, extra_dict=None):
+        super().__init__()
+        self.extra_dict = extra_dict or {}
+
+    def filter(self, record):
+        # Assign each key-value pair in the dictionary to the log record
+        for key, value in self.extra_dict.items():
+            setattr(record, key, value)
+        return True
+
+def handler(job):
+    """
+    The main function that handles a job for image processing.
+
+    This function validates the input, sends a prompt to ComfyUI for processing,
+    polls ComfyUI for result, and retrieves generated images.
+
+    Args:
+        job (dict): A dictionary containing job details and input parameters.
+
+    Returns:
+        dict: A dictionary containing either an error message or a success status with generated images.
+    """
+    try:
+        # Input validation
+        if not isinstance(job, dict):
+            return {"error": "Job must be a dictionary"}
+        
+        if "id" not in job:
+            return {"error": "Job must contain an 'id' field"}
+        
+        if "input" not in job:
+            return {"error": "Job must contain an 'input' field"}
+        
+        logger.addFilter(DictFilter({"runpod_request_id": job["id"]}))
+        logger.debug("Got job", extra={"job": job, "test": "bar"})
+        
+        job_input = job["input"]
+        
+        # Validate job_input structure
+        if not isinstance(job_input, dict):
+            return {"error": "Job input must be a dictionary"}
+        
+        # Validate required fields
+        required_fields = ["images", "name", "gender"]
+        for field in required_fields:
+            if field not in job_input:
+                return {"error": f"Missing required field: {field}"}
+        
+        # Validate images
+        image_urls = job_input["images"]
+        if not isinstance(image_urls, list) or len(image_urls) == 0:
+            return {"error": "images must be a non-empty list of URLs"}
+        
+        for url in image_urls:
+            if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+                return {"error": f"Invalid image URL: {url}"}
+        
+        # Validate name
+        name = job_input["name"]
+        if not isinstance(name, str) or not name.strip():
+            return {"error": "name must be a non-empty string"}
+        
+        # Validate gender
+        gender = job_input["gender"]
+        if gender not in ['F', 'M']:
+            return {"error": "gender must be either 'F' or 'M'"}
+        
+        # Process valid input
+        captions = [""] * len(image_urls)
+
+        dataset_folder = create_captioned_dataset(image_urls, False, *captions)
+        config = get_config(name, dataset_folder, SAVE_MODEL_TO_FS_PATH, gender)
+        logger.info(
+            "Got config",
+            extra={
+                "job_name": name,
+                "config": json.dumps(config),
+                "captions": captions,
+                "dataset_folder_path": dataset_folder,
+                "dataset_folder_relative_path": os.path.abspath(dataset_folder)
+            }
+        )
+        job = get_job(config, name)
+        job.run()
+        job.cleanup()
+
+        files_to_delete = ['config.yaml', 'optimizer.pt']
+        logger.info("Cleaning up files", extra={"files": files_to_delete})
+
+        for file_name in files_to_delete:
+            file_path = os.path.join(SAVE_MODEL_TO_FS_PATH, file_name)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+                logger.info("Deleted file", extra={"file_path": file_path})
+            else:
+                logger.warning("File not found", extra={"file_path": file_path})
+
+        result = {"result": dataset_folder, "refresh_worker": REFRESH_WORKER}
+        return result
+
+    except Exception as e:
+        logger.error("Job errored", exc_info=True)
+        return {"error": str(e)}
 '''
 # def validate_input(job_input):
 #     """
@@ -301,70 +411,6 @@ def get_config(name: str, dataset_dir: str, output_dir: str, gender: Literal['F'
 
 # # Create the dataset
 # dataset_folder = create_dataset(image_urls, final_captions)
-
-
-def handler(job):
-    """
-    # TODO: document
-    # TODO: validate input
-    The main function that handles a job  an image.
-
-    This function validates the input, sends a prompt to ComfyUI for processing,
-    polls ComfyUI for result, and retrieves generated images.
-
-    Args:
-        job (dict): A dictionary containing job details and input parameters.
-
-    Returns:
-        dict: A dictionary containing either an error message or a success status with generated images.
-    """
-    # TODO: validate
-    # validated_data, error_message = validate_input(job_input)
-    # if error_message:
-    #     return {"error": error_message}
-    
-    job_input = job["input"]
-    image_urls = job_input["images"]
-    name = job_input["name"]
-    concept_sentence = job_input.get("concept_sentence", "")
-    gender: Literal['F'] | Literal['M'] = job_input["gender"]
-
-    # image_urls = [
-    #     "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg",
-    #     "https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg"
-    # ]
-    captions = [""] * len(image_urls)
-
-    dataset_folder = create_captioned_dataset(image_urls, concept_sentence, *captions)
-    config = get_config(name, dataset_folder, SAVE_MODEL_TO_FS_PATH, gender)
-    logger.info(
-        "Got config",
-        extra={
-            "job_name": name,
-            "config": json.dumps(config),
-            "captions": captions,
-            "dataset_folder_path": dataset_folder,
-            "dataset_folder_relative_path": os.path.abspath(dataset_folder)
-        }
-    )
-    job = get_job(config, name)
-    job.run()
-    job.cleanup()
-
-    files_to_delete = ['config.yaml', 'optimizer.pt']
-    logger.info("Cleaning up files", extra={"files": files_to_delete})
-
-    for file_name in files_to_delete:
-        file_path = os.path.join(SAVE_MODEL_TO_FS_PATH, file_name)
-        if os.path.isfile(file_path):
-            os.remove(file_path)
-            logger.info("Deleted file", extra={"file_path": file_path})
-        else:
-            logger.warning("File not found", extra={"file_path": file_path})
-
-    result = {"result": dataset_folder, "refresh_worker": REFRESH_WORKER}
-
-    return result
 
 # Start the handler only if this script is run directly
 if __name__ == "__main__":

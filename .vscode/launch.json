@@ -1,28 +1,23 @@
 {
-    "version": "0.2.0",
-    "configurations": [
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Docker: Python Debug",
+      "type": "python",
+      "request": "attach",
+      "preLaunchTask": "docker-compose-debug-up",
+      "connect": {
+        "host": "localhost",
+        "port": 5678
+      },
+      "pathMappings": [
         {
-            "name": "Run current config",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/run.py",
-            "args": [
-                "${file}"
-            ],
-            "env": {
-                "CUDA_LAUNCH_BLOCKING": "1",
-                "DEBUG_TOOLKIT": "1"
-            },
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "Python: Debug Current File",
-            "type": "python",
-            "request": "launch",
-            "program": "${file}",
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
-    ]
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "/"
+        }
+      ],
+      "justMyCode": true,
+      "postDebugTask": "docker-compose-debug-down",
+    }
+  ]
 }
