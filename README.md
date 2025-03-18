@@ -11,6 +11,27 @@ git push
 
 ## Test
 
+You might need to install these first:
+
 ```bash
-docker compose -f docker-compose.dev.yaml run test
+sudo apt-get update
+sudo apt-get install -y libsqlite3-dev libffi-dev libbz2-dev libncurses-dev \
+                       libreadline-dev libssl-dev zlib1g-dev libgdbm-dev \
+                       liblzma-dev tk-dev
+
+pyenv uninstall 3.10.12
+pyenv install 3.10.12
+```
+
+Prepare venv:
+
+```bash
+python -m venv venv
+pip install -r requirements-dev.txt
+```
+
+Run tests:
+
+```bash
+make test
 ```
