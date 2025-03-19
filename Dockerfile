@@ -9,11 +9,12 @@ RUN apt-get update
 # Set up Python environment
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
-# Clone the repository
+# Clone the repository with specific commit
 WORKDIR /app
 ARG CACHEBUST=1
 RUN git clone https://github.com/ostris/ai-toolkit.git && \
     cd ai-toolkit && \
+    git checkout fa187b1 && \
     git submodule update --init --recursive
 
 # Production stage

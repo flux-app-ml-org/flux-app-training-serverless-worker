@@ -4,8 +4,9 @@ import json
 import logging
 import os
 import requests
+import subprocess
+import yaml
 from io import BytesIO
-from toolkit.job import get_job
 from loki_logger_handler.loki_logger_handler import LokiLoggerHandler
 import sys
 from collections import OrderedDict
@@ -126,19 +127,54 @@ def handler(job):
 
         dataset_folder = create_captioned_dataset(image_urls, False, *captions)
         config = get_config(name, dataset_folder, SAVE_MODEL_TO_FS_PATH, gender)
+        
+        # Save config as YAML in the dataset folder
+        config_path = os.path.join(dataset_folder, "config.yaml")
+        
+        # Convert OrderedDict to regular dict recursively
+        def convert_ordered_dict_to_dict(ordered_dict):
+            if isinstance(ordered_dict, OrderedDict):
+                return {k: convert_ordered_dict_to_dict(v) for k, v in ordered_dict.items()}
+            elif isinstance(ordered_dict, list):
+                return [convert_ordered_dict_to_dict(item) for item in ordered_dict]
+            else:
+                return ordered_dict
+        
+        # Convert the config to regular dict before saving
+        regular_dict_config = convert_ordered_dict_to_dict(config)
+        
+        with open(config_path, 'w') as f:
+            yaml.dump(regular_dict_config, f)
+        
         logger.info(
-            "Got config",
+            "Saved config",
             extra={
                 "job_name": name,
-                "config": json.dumps(config),
+                "config_path": config_path,
                 "captions": captions,
                 "dataset_folder_path": dataset_folder,
                 "dataset_folder_relative_path": os.path.abspath(dataset_folder)
             }
         )
-        job = get_job(config, name)
-        job.run()
-        job.cleanup()
+        
+        # Run the training script using the saved config
+        ai_toolkit_path = "/workspace/ai-toolkit"  # Path to the ai-toolkit repo
+        run_script_path = os.path.join(ai_toolkit_path, "run.py")
+        
+        cmd = ["python", run_script_path, config_path]
+        logger.info("Running command", extra={"cmd": " ".join(cmd)})
+        
+        process = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if process.returncode != 0:
+            logger.error("Command failed", extra={
+                "returncode": process.returncode,
+                "stdout": process.stdout,
+                "stderr": process.stderr
+            })
+            raise Exception(f"Training failed with exit code {process.returncode}: {process.stderr}")
+        
+        logger.info("Command completed successfully", extra={"stdout": process.stdout})
 
         files_to_delete = ['config.yaml', 'optimizer.pt']
         logger.info("Cleaning up files", extra={"files": files_to_delete})

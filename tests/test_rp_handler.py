@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import tempfile
+import yaml
 from io import BytesIO
 from PIL import Image as PILImage  # We'll use the real PIL for image operations
 
@@ -15,8 +16,6 @@ sys.modules['transformers'] = MagicMock()
 sys.modules['runpod'] = MagicMock()
 sys.modules['loki_logger_handler'] = MagicMock()
 sys.modules['loki_logger_handler.loki_logger_handler'] = MagicMock()
-sys.modules['toolkit'] = MagicMock()
-sys.modules['toolkit.job'] = MagicMock()
 
 # Now we can safely import the module
 import rp_handler
@@ -62,18 +61,6 @@ class MockProcessor:
     def post_process_generation(self, text, **kwargs):
         return {"<DETAILED_CAPTION>": "The image shows a person"}
 
-class MockJob:
-    def __init__(self, *args, **kwargs):
-        self.config = args[0]
-        self.name = args[1]
-        self.run_called = False
-        self.cleanup_called = False
-    
-    def run(self):
-        self.run_called = True
-    
-    def cleanup(self):
-        self.cleanup_called = True
 
 class MockResponse:
     def __init__(self, content=None, status_code=200):
@@ -99,6 +86,83 @@ def temp_dir():
     # Clean up after the test
     shutil.rmtree(temp_dir)
 
+# Constants for expected config values
+EXPECTED_CONFIG_VALUES = {
+    "job": "extension",
+    "network_type": "lora",
+    "network_linear": 16,
+    "network_linear_alpha": 16,
+    "caption_ext": "txt",
+    "caption_dropout_rate": 0.05,
+    "shuffle_tokens": False,
+    "cache_latents_to_disk": True,
+    "resolution": [512, 768, 1024],
+    "batch_size": 1,
+    "default_steps": 1000,
+    "gradient_accumulation_steps": 1,
+    "train_unet": True,
+    "train_text_encoder": False,
+    "gradient_checkpointing": True,
+    "noise_scheduler": "flowmatch",
+    "optimizer": "adamw8bit",
+    "lr": 1e-4,
+    "disable_sampling": True,
+    "ema_use": True,
+    "ema_decay": 0.99,
+    "dtype": "bf16",
+    "model_name": "black-forest-labs/FLUX.1-dev",
+    "is_flux": True,
+    "quantize": True
+}
+
+def verify_config_structure(config_content):
+    """Helper function to verify the structure of the config file"""
+    # Check top-level keys
+    assert config_content["job"] == EXPECTED_CONFIG_VALUES["job"]
+    assert "config" in config_content
+    assert "meta" in config_content
+    
+    # Check process section
+    process = config_content["config"]["process"][0]
+    assert process["type"] == "sd_trainer"
+    assert process["device"] == "cuda:0"
+    
+    # Check network configuration
+    assert process["network"]["type"] == EXPECTED_CONFIG_VALUES["network_type"]
+    assert process["network"]["linear"] == EXPECTED_CONFIG_VALUES["network_linear"]
+    assert process["network"]["linear_alpha"] == EXPECTED_CONFIG_VALUES["network_linear_alpha"]
+    
+    # Check dataset configuration
+    dataset_config = process["datasets"][0]
+    assert dataset_config["caption_ext"] == EXPECTED_CONFIG_VALUES["caption_ext"]
+    assert dataset_config["caption_dropout_rate"] == EXPECTED_CONFIG_VALUES["caption_dropout_rate"]
+    assert dataset_config["shuffle_tokens"] is EXPECTED_CONFIG_VALUES["shuffle_tokens"]
+    assert dataset_config["cache_latents_to_disk"] is EXPECTED_CONFIG_VALUES["cache_latents_to_disk"]
+    assert dataset_config["resolution"] == EXPECTED_CONFIG_VALUES["resolution"]
+    
+    # Check training configuration
+    train_config = process["train"]
+    assert train_config["batch_size"] == EXPECTED_CONFIG_VALUES["batch_size"]
+    assert train_config["gradient_accumulation_steps"] == EXPECTED_CONFIG_VALUES["gradient_accumulation_steps"]
+    assert train_config["train_unet"] is EXPECTED_CONFIG_VALUES["train_unet"]
+    assert train_config["train_text_encoder"] is EXPECTED_CONFIG_VALUES["train_text_encoder"]
+    assert train_config["gradient_checkpointing"] is EXPECTED_CONFIG_VALUES["gradient_checkpointing"]
+    assert train_config["noise_scheduler"] == EXPECTED_CONFIG_VALUES["noise_scheduler"]
+    assert train_config["optimizer"] == EXPECTED_CONFIG_VALUES["optimizer"]
+    assert train_config["lr"] == EXPECTED_CONFIG_VALUES["lr"]
+    assert train_config["disable_sampling"] is EXPECTED_CONFIG_VALUES["disable_sampling"]
+    assert train_config["dtype"] == EXPECTED_CONFIG_VALUES["dtype"]
+    
+    # Check EMA configuration
+    assert train_config["ema_config"]["use_ema"] is EXPECTED_CONFIG_VALUES["ema_use"]
+    assert train_config["ema_config"]["ema_decay"] == EXPECTED_CONFIG_VALUES["ema_decay"]
+    
+    # Check model configuration
+    model_config = process["model"]
+    assert model_config["name_or_path"] == EXPECTED_CONFIG_VALUES["model_name"]
+    assert model_config["is_flux"] is EXPECTED_CONFIG_VALUES["is_flux"]
+    assert model_config["quantize"] is EXPECTED_CONFIG_VALUES["quantize"]
+
 @pytest.fixture
 def setup_mocks(temp_dir):
     # Set up all the necessary mocks
@@ -113,9 +177,8 @@ def setup_mocks(temp_dir):
     # Keep real PIL.Image for actual image operations
     original_pil_open = PILImage.open
     
-    # Create a mock job that we can inspect
-    mock_job = MockJob(None, None)
-    rp_handler.get_job = MagicMock(return_value=mock_job)
+    # Mock subprocess.run to avoid actually running the command
+    rp_handler.subprocess.run = MagicMock(return_value=MagicMock(returncode=0, stdout="Success", stderr=""))
     
     # Set environment variables
     os.environ["SAVE_MODEL_TO_FS_PATH"] = os.path.join(temp_dir, "models")
@@ -159,7 +222,6 @@ def setup_mocks(temp_dir):
     
     yield {
         "temp_dir": temp_dir,
-        "mock_job": mock_job
     }
     
     # Restore original functions
@@ -224,17 +286,33 @@ def test_handler_valid_input(setup_mocks, mock_requests):
                 assert entry["prompt"] == expected_captions[i]
                 assert entry["file_name"] == f"image_{i}.jpg"
         
-        # Verify job was run
-        mock_job = setup_mocks["mock_job"]
-        assert mock_job.run_called
-        assert mock_job.cleanup_called
+        # Verify config.yaml was created and contains the expected content
+        config_path = os.path.join(dataset_path, "config.yaml")
+        assert os.path.exists(config_path)
         
-        # Verify get_job was called with correct parameters
-        rp_handler.get_job.assert_called_once()
-        config_arg = rp_handler.get_job.call_args[0][0]
-        name_arg = rp_handler.get_job.call_args[0][1]
-        assert name_arg == "test-model"
-        assert isinstance(config_arg, dict) or hasattr(config_arg, 'items')
+        with open(config_path, "r") as f:
+            config_content = yaml.safe_load(f)
+            
+            # Check config name
+            assert config_content["config"]["name"] == "test-model"
+            
+            # Check specific paths
+            process = config_content["config"]["process"][0]
+            assert process["training_folder"] == "/runpod-volume/models/loras"
+            assert process["datasets"][0]["folder_path"] == dataset_path
+            
+            # Verify the rest of the config structure using the helper function
+            verify_config_structure(config_content)
+            
+            # Check steps value specifically
+            assert process["train"]["steps"] == EXPECTED_CONFIG_VALUES["default_steps"]
+        
+        # Verify subprocess.run was called with the correct parameters
+        rp_handler.subprocess.run.assert_called_once()
+        cmd_args = rp_handler.subprocess.run.call_args[0][0]
+        assert cmd_args[0] == "python"
+        assert cmd_args[1].endswith("run.py")
+        assert cmd_args[2] == config_path
 
 def test_create_captioned_dataset_content(setup_mocks, mock_requests):
     """Test that the captions are correctly written to text files"""
@@ -408,9 +486,10 @@ def test_get_config(setup_mocks):
     dataset_dir = "/path/to/dataset"
     output_dir = "/path/to/output"
     gender = "F"
+    custom_steps = 2000
     
     # Call the function
-    config = rp_handler.get_config(name, dataset_dir, output_dir, gender)
+    config = rp_handler.get_config(name, dataset_dir, output_dir, gender, steps=custom_steps)
     
     # Verify the config structure
     assert isinstance(config, dict) or hasattr(config, 'items')
@@ -421,21 +500,17 @@ def test_get_config(setup_mocks):
     else:
         config_dict = config
     
-    # Check key parts of the config
-    assert "job" in config_dict
-    assert "config" in config_dict
-    assert "meta" in config_dict
-    
-    # Check the name is set correctly
+    # Check specific paths and values
     assert config_dict["config"]["name"] == name
-    
-    # Check dataset directory is set correctly
     process = config_dict["config"]["process"][0]
-    dataset_config = process["datasets"][0]
-    assert dataset_config["folder_path"] == dataset_dir
-    
-    # Check output directory is set correctly
     assert process["training_folder"] == output_dir
+    assert process["datasets"][0]["folder_path"] == dataset_dir
+    
+    # Check that custom steps value is used
+    assert process["train"]["steps"] == custom_steps
+    
+    # Use the helper function to verify the rest of the structure
+    verify_config_structure(config_dict)
 
 def test_handler_exception_handling(setup_mocks):
     # Test exception handling in the handler
@@ -456,3 +531,25 @@ def test_handler_exception_handling(setup_mocks):
         # Verify the error
         assert "error" in result
         assert "Test exception" in result["error"]
+
+def test_subprocess_failure(setup_mocks, mock_requests):
+    # Test handling of subprocess failure
+    job = {
+        "id": "test-job-id",
+        "input": {
+            "images": ["https://example.com/image1.jpg"],
+            "name": "test-model",
+            "gender": "F"
+        }
+    }
+    
+    # Mock subprocess.run to return a failure
+    mock_process = MagicMock(returncode=1, stdout="", stderr="Command failed")
+    with patch('rp_handler.subprocess.run', return_value=mock_process):
+        with patch('rp_handler.run_captioning', return_value=["Test caption"]):
+            # Call the handler
+            result = rp_handler.handler(job)
+            
+            # Verify the error
+            assert "error" in result
+            assert "Training failed with exit code 1" in result["error"]
