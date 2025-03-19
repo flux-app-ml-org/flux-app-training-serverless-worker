@@ -117,16 +117,11 @@ def handler(job):
         if not isinstance(name, str) or not name.strip():
             return {"error": "name must be a non-empty string"}
         
-        # Validate gender
-        gender = job_input["gender"]
-        if gender not in ['F', 'M']:
-            return {"error": "gender must be either 'F' or 'M'"}
-        
         # Process valid input
         captions = [""] * len(image_urls)
 
         dataset_folder = create_captioned_dataset(image_urls, False, *captions)
-        config = get_config(name, dataset_folder, SAVE_MODEL_TO_FS_PATH, gender)
+        config = get_config(name, dataset_folder, SAVE_MODEL_TO_FS_PATH)
         
         # Save config as YAML in the dataset folder
         config_path = os.path.join(dataset_folder, "config.yaml")
@@ -325,7 +320,7 @@ def create_captioned_dataset(image_urls, concept_sentence, *captions):
     final_captions = run_captioning(image_urls, concept_sentence, *captions)
     return create_dataset(image_urls, final_captions)
 
-def get_config(name: str, dataset_dir: str, output_dir: str, gender: Literal['F'] | Literal['M'], steps: int = 1000, seed: int = 42):
+def get_config(name: str, dataset_dir: str, output_dir: str, steps: int = 1000, seed: int = 42):
     # example workflow https://github.com/ostris/ai-toolkit/blob/main/config/examples/train_lora_flux_24gb.yaml
     # TODO: allow passing config as job input
     # TODO: we are saving some `optimizer.pt` along with `.safetensors` - this is not needed, research how to remove

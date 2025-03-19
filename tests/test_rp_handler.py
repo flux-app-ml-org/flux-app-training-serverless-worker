@@ -397,24 +397,6 @@ def test_handler_missing_required_fields(setup_mocks):
     assert "error" in result
     assert "Missing required field: name" in result["error"]
 
-def test_handler_invalid_gender(setup_mocks):
-    # Test with invalid gender
-    job = {
-        "id": "test-job-id",
-        "input": {
-            "images": ["https://example.com/image1.jpg"],
-            "name": "test-model",
-            "gender": "X"  # Invalid gender
-        }
-    }
-    
-    # Call the handler
-    result = rp_handler.handler(job)
-    
-    # Verify the error
-    assert "error" in result
-    assert "gender must be either 'F' or 'M'" in result["error"]
-
 def test_handler_empty_images(setup_mocks):
     # Test with empty images list
     job = {
@@ -486,11 +468,10 @@ def test_get_config(setup_mocks):
     name = "test-model"
     dataset_dir = "/path/to/dataset"
     output_dir = "/path/to/output"
-    gender = "F"
     custom_steps = 2000
     
     # Call the function
-    config = rp_handler.get_config(name, dataset_dir, output_dir, gender, steps=custom_steps)
+    config = rp_handler.get_config(name, dataset_dir, output_dir, steps=custom_steps)
     
     # Verify the config structure
     assert isinstance(config, dict) or hasattr(config, 'items')
