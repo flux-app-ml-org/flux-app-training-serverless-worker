@@ -157,48 +157,6 @@ def handler(job):
     except Exception as e:
         logger.error("Job errored", exc_info=True)
         return {"error": str(e)}
-'''
-# def validate_input(job_input):
-#     """
-#     Validates the input for the handler function.
-
-#     Args:
-#         job_input (dict): The input data to validate.
-
-#     Returns:
-#         tuple: A tuple containing the validated data and an error message, if any.
-#                The structure is (validated_data, error_message).
-#     """
-#     # Validate if job_input is provided
-#     if job_input is None:
-#         return None, "Please provide input"
-
-#     # Check if input is a string and try to parse it as JSON
-#     if isinstance(job_input, str):
-#         try:
-#             job_input = json.loads(job_input)
-#         except json.JSONDecodeError:
-#             return None, "Invalid JSON format in input"
-
-#     # Validate 'workflow' in input
-#     workflow = job_input.get("workflow")
-#     if workflow is None:
-#         return None, "Missing 'workflow' parameter"
-
-#     # Validate 'images' in input, if provided
-#     images = job_input.get("images")
-#     if images is not None:
-#         if not isinstance(images, list) or not all(
-#             "name" in image and "image" in image for image in images
-#         ):
-#             return (
-#                 None,
-#                 "'images' must be a list of objects with 'name' and 'image' keys",
-#             )
-
-#     # Return validated data and no error
-#     return {"workflow": workflow, "images": images}, None
-'''
 
 def generate_caption_for_image(image, processor, model, device, torch_dtype, concept_sentence=False):
     """
@@ -301,6 +259,7 @@ def create_captioned_dataset(image_urls, concept_sentence, *captions):
     return create_dataset(image_urls, final_captions)
 
 def get_config(name: str, dataset_dir: str, output_dir: str, gender: Literal['F'] | Literal['M'], steps: int = 1000, seed: int = 42):
+    # example workflow https://github.com/ostris/ai-toolkit/blob/main/config/examples/train_lora_flux_24gb.yaml
     # TODO: allow passing config as job input
     # TODO: we are saving some `optimizer.pt` along with `.safetensors` - this is not needed, research how to remove
     
@@ -316,119 +275,53 @@ def get_config(name: str, dataset_dir: str, output_dir: str, gender: Literal['F'
         ('process', [
             OrderedDict([
                 ('type', 'sd_trainer'),
-                # root folder to save training sessions/samples/weights
                 ('training_folder', output_dir),
-                # uncomment to see performance stats in the terminal every N steps
-                ('performance_log_every', 1000),
                 ('device', 'cuda:0'),
-                # if a trigger word is specified, it will be added to captions of training data if it does not already exist
-                # alternatively, in your captions you can add [trigger] and it will be replaced with the trigger word
-                # ('trigger_word', 'image'),
                 ('network', OrderedDict([
                     ('type', 'lora'),
                     ('linear', 16),
                     ('linear_alpha', 16)
                 ])),
-                # TODO: this pauses the process every N steps, do we need this?
-                # ('save', OrderedDict([
-                #     ('dtype', 'float16'),  # precision to save
-                #     ('save_every', 250),  # save every this many steps
-                #     ('max_step_saves_to_keep', 4)  # how many intermittent saves to keep
-                # ])),
                 ('datasets', [
-                    # datasets are a folder of images. captions need to be txt files with the same name as the image
-                    # for instance image2.jpg and image2.txt. Only jpg, jpeg, and png are supported currently
-                    # images will automatically be resized and bucketed into the resolution specified
                     OrderedDict([
                         ('folder_path', dataset_dir),
                         ('caption_ext', 'txt'),
-                        ('caption_dropout_rate', 0.05),  # will drop out the caption 5% of time
-                        ('shuffle_tokens', False),  # shuffle caption order, split by commas
-                        ('cache_latents_to_disk', True),  # leave this true unless you know what you're doing
-                        ('resolution', [512, 768, 1024])  # flux enjoys multiple resolutions
+                        ('caption_dropout_rate', 0.05),
+                        ('shuffle_tokens', False),
+                        ('cache_latents_to_disk', True),
+                        ('resolution', [512, 768, 1024])
                     ])
                 ]),
                 ('train', OrderedDict([
                     ('batch_size', 1),
-                    ('steps', steps),  # total number of steps to train 500 - 4000 is a good range
+                    ('steps', steps),
                     ('gradient_accumulation_steps', 1),
                     ('train_unet', True),
-                    ('train_text_encoder', False),  # probably won't work with flux
-                    # ('content_or_style', 'balanced'),  # content, style, balanced
-                    ('gradient_checkpointing', True),  # need the on unless you have a ton of vram
-                    ('noise_scheduler', 'flowmatch'),  # for training only
+                    ('train_text_encoder', False),
+                    ('gradient_checkpointing', True),
+                    ('noise_scheduler', 'flowmatch'),
                     ('optimizer', 'adamw8bit'),
                     ('lr', 1e-4),
-
-                    # uncomment this to skip the pre training sample
-                    # ('skip_first_sample', True),
-
-                    # uncomment to completely disable sampling
-                    # ('disable_sampling', True),
-
-                    # uncomment to use new vell curved weighting. Experimental but may produce better results
-                    # ('linear_timesteps', True),
-
-                    # ema will smooth out learning, but could slow it down. Recommended to leave on.
+                    ('disable_sampling', True),
                     ('ema_config', OrderedDict([
                         ('use_ema', True),
                         ('ema_decay', 0.99)
                     ])),
-
-                    # will probably need this if gpu supports it for flux, other dtypes may not work correctly
                     ('dtype', 'bf16')
                 ])),
                 ('model', OrderedDict([
-                    # huggingface model name or path
                     ('name_or_path', 'black-forest-labs/FLUX.1-dev'),
                     ('is_flux', True),
-                    ('quantize', True),  # run 8bit mixed precision
-                    #('low_vram', True),  # uncomment this if the GPU is connected to your monitors. It will use less vram to quantize, but is slower.
-                ])),
-                # ('sample', OrderedDict([
-                #     ('sampler', 'flowmatch'),  # must match train.noise_scheduler
-                #     # TODO: persist sampling results
-                #     ('sample_every', steps),  # sample every this many steps
-                #     ('width', 1024),
-                #     ('height', 1024),
-                #     ('prompts', sample_prompt),
-                #     # [
-                #         # you can add [trigger] to the prompts here and it will be replaced with the trigger word
-                #         #'[trigger] holding a sign that says \'I LOVE PROMPTS!\'',
-                        
-                #         # 'woman with red hair, playing chess at the park, bomb going off in the background',
-                #         # 'a woman holding a coffee cup, in a beanie, sitting at a cafe',
-                #         # 'a horse is a DJ at a night club, fish eye lens, smoke machine, lazer lights, holding a martini',
-                #         # 'a man showing off his cool new t shirt at the beach, a shark is jumping out of the water in the background',
-                #         # 'a bear building a log cabin in the snow covered mountains',
-                #         # 'woman playing the guitar, on stage, singing a song, laser lights, punk rocker',
-                #         # 'hipster man with a beard, building a chair, in a wood shop',
-                #         # 'photo of a man, white background, medium shot, modeling clothing, studio lighting, white backdrop',
-                #         # 'a man holding a sign that says, \'this is a sign\'',
-                #         # 'a bulldog, in a post apocalyptic world, with a shotgun, in a leather jacket, in a desert, with a motorcycle'
-                #     # ]),
-                #     ('neg', ''),  # not used on flux
-                #     ('seed', seed),
-                #     ('walk_seed', True),
-                #     ('guidance_scale', 4),
-                #     ('sample_steps', 20)
-                # ]))
+                    ('quantize', True),
+                ]))
             ])
         ])
     ])),
-    # you can add any additional meta info here. [name] is replaced with config name at top
     ('meta', OrderedDict([
         ('name', '[name]'),
         ('version', '1.0')
     ]))
 ])
-
-# Run the captioning
-# final_captions = run_captioning(image_urls, concept_sentence, *captions)
-# print(final_captions)
-
-# # Create the dataset
-# dataset_folder = create_dataset(image_urls, final_captions)
 
 # Start the handler only if this script is run directly
 if __name__ == "__main__":
