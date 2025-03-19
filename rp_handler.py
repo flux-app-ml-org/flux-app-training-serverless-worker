@@ -164,6 +164,7 @@ def handler(job):
         cmd = ["python", run_script_path, config_path]
         logger.info("Running command", extra={"cmd": " ".join(cmd)})
         
+        torch.cuda.empty_cache()
         process = subprocess.run(cmd, capture_output=True, text=True)
         
         if process.returncode != 0:
@@ -190,9 +191,35 @@ def handler(job):
         result = {"result": dataset_folder, "refresh_worker": REFRESH_WORKER}
         return result
 
+    except torch.OutOfMemoryError as e:
+        log_gpu_memory_usage()
+        log_memory_usage()
+        logger.error("CUDA out of memory error", exc_info=True)
+        return {"error": "CUDA out of memory"}
     except Exception as e:
         logger.error("Job errored", exc_info=True)
         return {"error": str(e)}
+
+def log_memory_usage():
+    allocated_memory = torch.cuda.memory_allocated()
+    reserved_memory = torch.cuda.memory_reserved()
+    logger.debug(f"Allocated memory: {allocated_memory / (1024 ** 2):.2f} MiB")
+    logger.debug(f"Reserved memory: {reserved_memory / (1024 ** 2):.2f} MiB")
+    
+def log_gpu_memory_usage():
+    try:
+        # Run nvidia-smi to get GPU memory usage
+        process = subprocess.run(
+            ["nvidia-smi", "--query-compute-apps=pid,process_name,gpu_memory_usage", "--format=csv"],
+            capture_output=True,
+            text=True
+        )
+        if process.returncode == 0:
+            logger.debug("Current GPU memory usage:\n" + process.stdout)
+        else:
+            logger.error(f"Failed to run nvidia-smi: {process.stderr}")
+    except Exception as e:
+        logger.error("Error logging GPU memory usage", exc_info=True)
 
 def generate_caption_for_image(image, processor, model, device, torch_dtype, concept_sentence=False):
     """
@@ -299,65 +326,79 @@ def get_config(name: str, dataset_dir: str, output_dir: str, gender: Literal['F'
     # TODO: allow passing config as job input
     # TODO: we are saving some `optimizer.pt` along with `.safetensors` - this is not needed, research how to remove
     
-    # TODO: job sometimes fail when generating a sample image,
-    # move to inference worker?
-    # sample_prompt = ['Woman face close up photo, bright frontal white studio light'] if gender == 'F' else ['Man face close up photo, bright frontal white studio light']
-
     return OrderedDict([
-    ('job', 'extension'),
-    ('config', OrderedDict([
-        # this name will be the folder and filename name
-        ('name', name),
-        ('process', [
-            OrderedDict([
-                ('type', 'sd_trainer'),
-                ('training_folder', output_dir),
-                ('device', 'cuda:0'),
-                ('network', OrderedDict([
-                    ('type', 'lora'),
-                    ('linear', 16),
-                    ('linear_alpha', 16)
-                ])),
-                ('datasets', [
-                    OrderedDict([
-                        ('folder_path', dataset_dir),
-                        ('caption_ext', 'txt'),
-                        ('caption_dropout_rate', 0.05),
-                        ('shuffle_tokens', False),
-                        ('cache_latents_to_disk', True),
-                        ('resolution', [512, 768, 1024])
-                    ])
-                ]),
-                ('train', OrderedDict([
-                    ('batch_size', 1),
-                    ('steps', steps),
-                    ('gradient_accumulation_steps', 1),
-                    ('train_unet', True),
-                    ('train_text_encoder', False),
-                    ('gradient_checkpointing', True),
-                    ('noise_scheduler', 'flowmatch'),
-                    ('optimizer', 'adamw8bit'),
-                    ('lr', 1e-4),
-                    ('disable_sampling', True),
-                    ('ema_config', OrderedDict([
-                        ('use_ema', True),
-                        ('ema_decay', 0.99)
+        ('job', 'extension'),
+        ('config', OrderedDict([
+            # this name will be the folder and filename name
+            ('name', name),
+            ('process', [
+                OrderedDict([
+                    ('type', 'sd_trainer'),
+                    ('training_folder', output_dir),
+                    ('device', 'cuda:0'),
+                    ('network', OrderedDict([
+                        ('type', 'lora'),
+                        ('linear', 16),
+                        ('linear_alpha', 16)
                     ])),
-                    ('dtype', 'bf16')
-                ])),
-                ('model', OrderedDict([
-                    ('name_or_path', 'black-forest-labs/FLUX.1-dev'),
-                    ('is_flux', True),
-                    ('quantize', True),
-                ]))
+                    ('save', OrderedDict([
+                        ('dtype', 'float16'),
+                        ('save_every', 1000),
+                        ('max_step_saves_to_keep', 4),
+                        ('push_to_hub', False)
+                    ])),
+                    ('datasets', [
+                        OrderedDict([
+                            ('folder_path', dataset_dir),
+                            ('caption_ext', 'txt'),
+                            ('caption_dropout_rate', 0.05),
+                            ('shuffle_tokens', False),
+                            ('cache_latents_to_disk', True),
+                            ('resolution', [512, 768, 1024])
+                        ])
+                    ]),
+                    ('train', OrderedDict([
+                        ('batch_size', 1),
+                        ('steps', steps),
+                        ('gradient_accumulation_steps', 1),
+                        ('train_unet', True),
+                        ('train_text_encoder', False),
+                        ('gradient_checkpointing', True),
+                        ('noise_scheduler', 'flowmatch'),
+                        ('optimizer', 'adamw8bit'),
+                        ('lr', 1e-4),
+                        ('disable_sampling', True),
+                        ('ema_config', OrderedDict([
+                            ('use_ema', True),
+                            ('ema_decay', 0.99)
+                        ])),
+                        ('dtype', 'bf16')
+                    ])),
+                    ('model', OrderedDict([
+                        ('name_or_path', 'black-forest-labs/FLUX.1-dev'),
+                        ('is_flux', True),
+                        ('quantize', True),
+                    ])),
+                    ('sample', OrderedDict([
+                        ('sampler', 'flowmatch'),
+                        ('sample_every', 10000), # set a large number to disable sampling
+                        ('width', 1024),
+                        ('height', 1024),
+                        ('prompts', ['a woman holding a coffee cup']),
+                        ('neg', ''),
+                        ('seed', seed),
+                        ('walk_seed', True),
+                        ('guidance_scale', 4),
+                        ('sample_steps', 20)
+                    ]))
+                ])
             ])
-        ])
-    ])),
-    ('meta', OrderedDict([
-        ('name', '[name]'),
-        ('version', '1.0')
-    ]))
-])
+        ])),
+        ('meta', OrderedDict([
+            ('name', '[name]'),
+            ('version', '1.0')
+        ]))
+    ])
 
 # Start the handler only if this script is run directly
 if __name__ == "__main__":

@@ -168,6 +168,7 @@ def setup_mocks(temp_dir):
     # Set up all the necessary mocks
     rp_handler.torch.cuda.is_available = MagicMock(return_value=True)
     rp_handler.torch.float16 = "float16"
+    rp_handler.torch.cuda.empty_cache = MagicMock()
     
     # Mock model and processor
     mock_model = MockModel()
