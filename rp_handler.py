@@ -339,6 +339,7 @@ def get_config(name: str, dataset_dir: str, output_dir: str, gender: Literal['F'
                 OrderedDict([
                     ('type', 'sd_trainer'),
                     ('training_folder', output_dir),
+                    ('performance_log_every', 1000),
                     ('device', 'cuda:0'),
                     ('network', OrderedDict([
                         ('type', 'lora'),
