@@ -191,11 +191,15 @@ def handler(job):
         result = {"result": dataset_folder, "refresh_worker": REFRESH_WORKER}
         return result
 
-    except torch.OutOfMemoryError as e:
-        log_gpu_memory_usage()
-        log_memory_usage()
-        logger.error("CUDA out of memory error", exc_info=True)
-        return {"error": "CUDA out of memory"}
+    except RuntimeError as e:
+        if "out of memory" in str(e).lower():
+            log_gpu_memory_usage()
+            log_memory_usage()
+            logger.error("CUDA out of memory error", exc_info=True)
+            return {"error": "CUDA out of memory"}
+        else:
+            logger.error("Job errored", exc_info=True)
+            return {"error": str(e)}
     except Exception as e:
         logger.error("Job errored", exc_info=True)
         return {"error": str(e)}
@@ -296,7 +300,7 @@ def create_dataset(images, captions):
                 image = Image.open(BytesIO(response.content)).convert("RGB")
                 local_image_path = os.path.join(destination_folder, f"image_{index}.jpg")
                 image.save(local_image_path)
-                logger.info("Saved image", extra={"path": os.path.abspath(local_image_path), "relative_path": local_image_path})
+                logger.debug("Saved image", extra={"path": os.path.abspath(local_image_path), "relative_path": local_image_path})
             except Exception as e:
                 logger.error("Error saving image", extra={"image_url": image_url, "error": str(e)})
                 continue
@@ -308,7 +312,7 @@ def create_dataset(images, captions):
             caption_file_path = os.path.join(destination_folder, f"image_{index}.txt")
             with open(caption_file_path, "w") as caption_file:
                 caption_file.write(original_caption)
-                logger.info("Saved caption", extra={"path": os.path.abspath(caption_file_path), "relative_path": caption_file_path})
+                logger.debug("Saved caption", extra={"path": os.path.abspath(caption_file_path), "relative_path": caption_file_path})
 
             data = {"file_name": file_name, "prompt": original_caption}
             jsonl_file.write(json.dumps(data) + "\n")
