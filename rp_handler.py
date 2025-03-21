@@ -157,9 +157,10 @@ def handler(job):
         run_script_path = os.path.join(ai_toolkit_path, "run.py")
         
         cmd = ["python", run_script_path, config_path]
-        logger.info("Running command", extra={"cmd": " ".join(cmd)})
         
+        logger.debug("Clearing cuda cache")
         torch.cuda.empty_cache()
+        logger.info("Running command", extra={"cmd": " ".join(cmd)})
         process = subprocess.run(cmd, capture_output=True, text=True)
         
         if process.returncode != 0:
@@ -253,29 +254,63 @@ def generate_caption_for_image(image, processor, model, device, torch_dtype, con
     return caption_text
 
 def run_captioning(images, concept_sentence, *captions):
+    """
+    Generate captions for a list of images using the Florence-2 model.
+    
+    Args:
+        images (list): List of image URLs
+        concept_sentence (str): Concept sentence to append to captions if needed
+        *captions: Initial captions for each image (will be replaced with generated ones)
+    
+    Returns:
+        list: Generated captions for each image
+    """
+    logger.info("Starting image captioning process", extra={"num_images": len(images)})
+    
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    logger.debug(f"Using device", extra={"device": device})
+    
+    model_name = 'microsoft/Florence-2-large'
     torch_dtype = torch.float16
-    model = AutoModelForCausalLM.from_pretrained(
-        "multimodalart/Florence-2-large-no-flash-attn", torch_dtype=torch_dtype, trust_remote_code=True
-    ).to(device)
-    processor = AutoProcessor.from_pretrained("multimodalart/Florence-2-large-no-flash-attn", trust_remote_code=True)
+    
+    logger.info("Loading Florence-2 model and processor", extra={"model_name": model_name})
+    try:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name, 
+            torch_dtype=torch_dtype, 
+            trust_remote_code=True
+        ).to(device)
+        processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
+        logger.debug("Model and processor loaded successfully")
+    except Exception as e:
+        logger.error("Failed to load model or processor", extra={"error": str(e), "model_name": model_name})
+        raise
 
     captions = list(captions)
     for i, image_url in enumerate(images):
+        logger.info(f"Processing image", extra={"image_url": image_url, "n": i+1, "count": len(images)})
         try:
+            logger.debug("Downloading image", extra={"image_url": image_url})
             response = requests.get(image_url)
             response.raise_for_status()
             image = Image.open(BytesIO(response.content)).convert("RGB")
+            logger.debug("Image downloaded and converted successfully", extra={"image_url": image_url, "image_size": image.size})
         except Exception as e:
             logger.error("Error loading image", extra={"image_url": image_url, "error": str(e)})
             captions[i] = "Error loading image"
             continue
 
+        logger.debug("Generating caption for image", extra={"image_index": i})
         captions[i] = generate_caption_for_image(image, processor, model, device, torch_dtype, concept_sentence)
+        logger.info("Caption generated successfully", extra={"image_index": i, "caption_length": len(captions[i])})
 
-    model.to("cpu")
+    logger.info("Captioning process completed", extra={"num_images": len(images)})
+    logger.debug("Cleaning up model resources")
     del model
     del processor
+    if device == "cuda":
+        torch.cuda.empty_cache()
+        logger.debug("CUDA cache cleared")
 
     return captions
 

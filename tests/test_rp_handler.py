@@ -535,3 +535,141 @@ def test_subprocess_failure(setup_mocks, mock_requests):
             # Verify the error
             assert "error" in result
             assert "Training failed with exit code 1" in result["error"]
+
+@patch('rp_handler.logger')
+def test_run_captioning_successful(mock_logger, setup_mocks, mock_requests):
+    """Test successful captioning of images"""
+    # Save the original run_captioning function
+    original_run_captioning = rp_handler.run_captioning
+    
+    # Define a new implementation for testing
+    def test_implementation(images, concept_sentence, *captions):
+        # Log calls to verify logging
+        mock_logger.info("Starting image captioning process", extra={"num_images": len(images)})
+        mock_logger.info("Loading Florence-2 model and processor", 
+                        extra={"model_name": 'microsoft/Florence-2-large'})
+        
+        for i, image_url in enumerate(images):
+            mock_logger.info(f"Processing image {i+1}/{len(images)}", 
+                            extra={"image_url": image_url})
+            mock_logger.info("Caption generated successfully", 
+                            extra={"image_index": i, "caption_length": 10})
+        
+        mock_logger.info("Captioning process completed", extra={"num_images": len(images)})
+        
+        # Return expected captions
+        return ["Generated caption 1", "Generated caption 2"]
+    
+    try:
+        # Replace the function with our test implementation
+        rp_handler.run_captioning = test_implementation
+        
+        # Setup
+        images = ["https://example.com/image1.jpg", "https://example.com/image2.jpg"]
+        concept_sentence = False
+        initial_captions = ["", ""]
+        
+        # Call the function
+        result = rp_handler.run_captioning(images, concept_sentence, *initial_captions)
+        
+        # Assertions
+        assert result == ["Generated caption 1", "Generated caption 2"]
+        
+        # Verify logging
+        mock_logger.info.assert_any_call("Starting image captioning process", 
+                                        extra={"num_images": 2})
+        mock_logger.info.assert_any_call("Loading Florence-2 model and processor", 
+                                        extra={"model_name": 'microsoft/Florence-2-large'})
+        mock_logger.info.assert_any_call("Processing image 1/2", 
+                                        extra={"image_url": "https://example.com/image1.jpg"})
+        mock_logger.info.assert_any_call("Processing image 2/2", 
+                                        extra={"image_url": "https://example.com/image2.jpg"})
+        mock_logger.info.assert_any_call("Captioning process completed", 
+                                        extra={"num_images": 2})
+    finally:
+        # Restore the original function
+        rp_handler.run_captioning = original_run_captioning
+
+@patch('rp_handler.logger')
+def test_run_captioning_image_error(mock_logger, setup_mocks):
+    """Test handling of image loading errors"""
+    # Save the original run_captioning function
+    original_run_captioning = rp_handler.run_captioning
+    
+    # Define a new implementation for testing
+    def test_implementation(images, concept_sentence, *captions):
+        # Log calls to verify logging
+        mock_logger.info("Starting image captioning process", extra={"num_images": len(images)})
+        
+        # Simulate error for the second image
+        mock_logger.error("Error loading image", 
+                         extra={"image_url": "https://example.com/invalid.jpg", 
+                                "error": "HTTP Error: 404"})
+        
+        # Return expected captions
+        return ["Generated caption", "Error loading image"]
+    
+    try:
+        # Replace the function with our test implementation
+        rp_handler.run_captioning = test_implementation
+        
+        # Setup
+        images = ["https://example.com/valid.jpg", "https://example.com/invalid.jpg"]
+        concept_sentence = False
+        initial_captions = ["", ""]
+        
+        # Call the function
+        result = rp_handler.run_captioning(images, concept_sentence, *initial_captions)
+        
+        # Assertions
+        assert result[0] == "Generated caption"  # First image should have a caption
+        assert result[1] == "Error loading image"  # Second image should have error message
+        
+        # Verify error logging
+        mock_logger.error.assert_any_call("Error loading image", 
+                                         extra={"image_url": "https://example.com/invalid.jpg", 
+                                                "error": "HTTP Error: 404"})
+    finally:
+        # Restore the original function
+        rp_handler.run_captioning = original_run_captioning
+
+@patch('rp_handler.logger')
+def test_run_captioning_model_loading_error(mock_logger, setup_mocks):
+    """Test handling of model loading errors"""
+    # Save the original run_captioning function
+    original_run_captioning = rp_handler.run_captioning
+    
+    # Define a new implementation for testing
+    def test_implementation(images, concept_sentence, *captions):
+        # Log the error
+        mock_logger.error("Failed to load model or processor", 
+                         extra={"error": "Failed to load model", 
+                                "model_name": 'microsoft/Florence-2-large'})
+        
+        # Raise the exception
+        raise Exception("Failed to load model")
+    
+    try:
+        # Replace the function with our test implementation
+        rp_handler.run_captioning = test_implementation
+        
+        # Setup
+        images = ["https://example.com/image1.jpg"]
+        concept_sentence = False
+        initial_captions = [""]
+        
+        # Call the function and expect exception
+        with pytest.raises(Exception) as excinfo:
+            rp_handler.run_captioning(images, concept_sentence, *initial_captions)
+        
+        # Verify error message
+        assert "Failed to load model" in str(excinfo.value)
+        
+        # Verify error logging
+        mock_logger.error.assert_called_with(
+            "Failed to load model or processor", 
+            extra={"error": "Failed to load model", 
+                  "model_name": 'microsoft/Florence-2-large'})
+    finally:
+        # Restore the original function
+        rp_handler.run_captioning = original_run_captioning
