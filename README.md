@@ -27,7 +27,8 @@ Prepare venv:
 
 ```bash
 python -m venv venv
-pip install -r requirements-dev.txt
+source venv/bin/activate
+pip3 install -r requirements-dev.txt
 ```
 
 Run tests:

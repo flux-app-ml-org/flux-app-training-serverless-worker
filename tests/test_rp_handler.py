@@ -94,12 +94,11 @@ EXPECTED_CONFIG_VALUES = {
     "network_linear_alpha": 16,
     "caption_ext": "txt",
     "caption_dropout_rate": 0.05,
-    "shuffle_tokens": False,
-    "cache_latents_to_disk": True,
+    "cache_latents_to_disk": False,
     "resolution": [512, 768, 1024],
     "batch_size": 1,
     "default_steps": 1000,
-    "gradient_accumulation_steps": 1,
+    "gradient_accumulation": 1,
     "train_unet": True,
     "train_text_encoder": False,
     "gradient_checkpointing": True,
@@ -111,7 +110,7 @@ EXPECTED_CONFIG_VALUES = {
     "ema_decay": 0.99,
     "dtype": "bf16",
     "model_name": "black-forest-labs/FLUX.1-dev",
-    "is_flux": True,
+    "arch": "flux",
     "quantize": True
 }
 
@@ -136,14 +135,14 @@ def verify_config_structure(config_content):
     dataset_config = process["datasets"][0]
     assert dataset_config["caption_ext"] == EXPECTED_CONFIG_VALUES["caption_ext"]
     assert dataset_config["caption_dropout_rate"] == EXPECTED_CONFIG_VALUES["caption_dropout_rate"]
-    assert dataset_config["shuffle_tokens"] is EXPECTED_CONFIG_VALUES["shuffle_tokens"]
+    # Removed shuffle_tokens check as it's not in the function
     assert dataset_config["cache_latents_to_disk"] is EXPECTED_CONFIG_VALUES["cache_latents_to_disk"]
     assert dataset_config["resolution"] == EXPECTED_CONFIG_VALUES["resolution"]
     
     # Check training configuration
     train_config = process["train"]
     assert train_config["batch_size"] == EXPECTED_CONFIG_VALUES["batch_size"]
-    assert train_config["gradient_accumulation_steps"] == EXPECTED_CONFIG_VALUES["gradient_accumulation_steps"]
+    assert train_config["gradient_accumulation"] == EXPECTED_CONFIG_VALUES["gradient_accumulation"]  # Updated key name
     assert train_config["train_unet"] is EXPECTED_CONFIG_VALUES["train_unet"]
     assert train_config["train_text_encoder"] is EXPECTED_CONFIG_VALUES["train_text_encoder"]
     assert train_config["gradient_checkpointing"] is EXPECTED_CONFIG_VALUES["gradient_checkpointing"]
@@ -160,7 +159,7 @@ def verify_config_structure(config_content):
     # Check model configuration
     model_config = process["model"]
     assert model_config["name_or_path"] == EXPECTED_CONFIG_VALUES["model_name"]
-    assert model_config["is_flux"] is EXPECTED_CONFIG_VALUES["is_flux"]
+    assert model_config["arch"] == EXPECTED_CONFIG_VALUES["arch"]  # Changed from is_flux to arch
     assert model_config["quantize"] is EXPECTED_CONFIG_VALUES["quantize"]
 
 @pytest.fixture

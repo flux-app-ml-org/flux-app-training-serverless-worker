@@ -247,11 +247,58 @@ def generate_caption_for_image(image, processor, model, device, torch_dtype, con
     parsed_answer = processor.post_process_generation(
         generated_text, task=prompt, image_size=(image.width, image.height)
     )
-    caption_text = parsed_answer["<DETAILED_CAPTION>"].replace("The image shows ", "")
+    caption_text = clean_caption(parsed_answer["<DETAILED_CAPTION>"])
     if concept_sentence:
         caption_text = f"{caption_text} [trigger]"
     
     return caption_text
+
+def clean_caption(cap, replacements=None):
+    default_replacements = [
+        ("the image features", ""),
+        ("the image shows", ""),
+        ("the image depicts", ""),
+        ("the image is", ""),
+        ("in this image", ""),
+        ("in the image", ""),
+    ]
+        
+    if replacements is None:
+        replacements = default_replacements
+
+    # remove any newlines
+    cap = cap.replace("\n", ", ")
+    cap = cap.replace("\r", ", ")
+    cap = cap.replace(".", ",")
+    cap = cap.replace("\"", "")
+
+    # remove unicode characters
+    cap = cap.encode('ascii', 'ignore').decode('ascii')
+
+    # make lowercase
+    cap = cap.lower()
+    # remove any extra spaces
+    cap = " ".join(cap.split())
+
+    for replacement in replacements:
+        if replacement[0].startswith('*'):
+            # we are removing all text if it starts with this and the rest matches
+            search_text = replacement[0][1:]
+            if cap.startswith(search_text):
+                cap = ""
+        else:
+            cap = cap.replace(replacement[0].lower(), replacement[1].lower())
+
+    cap_list = cap.split(",")
+    # trim whitespace
+    cap_list = [c.strip() for c in cap_list]
+    # remove empty strings
+    cap_list = [c for c in cap_list if c != ""]
+    # remove duplicates
+    cap_list = list(dict.fromkeys(cap_list))
+    # join back together
+    cap = ", ".join(cap_list)
+    return cap
 
 def run_captioning(images, concept_sentence, *captions):
     """
@@ -374,57 +421,79 @@ def get_config(name: str, dataset_dir: str, output_dir: str, steps: int = 1000, 
                     ('network', OrderedDict([
                         ('type', 'lora'),
                         ('linear', 16),
-                        ('linear_alpha', 16)
+                        ('linear_alpha', 16),
+                        ('lokr_full_rank', True),
+                        ('lokr_factor', -1)
                     ])),
                     ('save', OrderedDict([
-                        ('dtype', 'float16'),
+                        ('dtype', 'bf16'),
                         ('save_every', 1000),
-                        ('max_step_saves_to_keep', 4),
+                        ('max_step_saves_to_keep', 1),
+                        ('save_format', 'diffusers'),
                         ('push_to_hub', False)
                     ])),
                     ('datasets', [
                         OrderedDict([
                             ('folder_path', dataset_dir),
+                            ('mask_path', None),
+                            ('mask_min_value', 0.1),
+                            ('default_caption', ''),
                             ('caption_ext', 'txt'),
                             ('caption_dropout_rate', 0.05),
-                            ('shuffle_tokens', False),
-                            ('cache_latents_to_disk', True),
+                            ('cache_latents_to_disk', False),
+                            ('is_reg', False),
+                            ('network_weight', 1),
                             ('resolution', [512, 768, 1024])
                         ])
                     ]),
                     ('train', OrderedDict([
                         ('batch_size', 1),
+                        ('bypass_guidance_embedding', False),
                         ('steps', steps),
-                        ('gradient_accumulation_steps', 1),
+                        ('gradient_accumulation', 1),
                         ('train_unet', True),
                         ('train_text_encoder', False),
                         ('gradient_checkpointing', True),
                         ('noise_scheduler', 'flowmatch'),
                         ('optimizer', 'adamw8bit'),
+                        ('timestep_type', 'sigmoid'),
+                        ('content_or_style', 'balanced'),
+                        ('optimizer_params', OrderedDict([
+                            ('weight_decay', 0.0001)
+                        ])),
+                        ('unload_text_encoder', False),
                         ('lr', 1e-4),
-                        ('disable_sampling', True),
                         ('ema_config', OrderedDict([
                             ('use_ema', True),
                             ('ema_decay', 0.99)
                         ])),
-                        ('dtype', 'bf16')
+                        ('dtype', 'bf16'),
+                        ('diff_output_preservation', False),
+                        ('diff_output_preservation_multiplier', 1),
+                        ('diff_output_preservation_class', 'person'),
+                        ('skip_first_sample', True),
+                        ('disable_sampling', True),
                     ])),
                     ('model', OrderedDict([
                         ('name_or_path', 'black-forest-labs/FLUX.1-dev'),
-                        ('is_flux', True),
                         ('quantize', True),
+                        ('quantize_te', True),
+                        ('arch', 'flux'),
+                        ('low_vram', False)
                     ])),
                     ('sample', OrderedDict([
                         ('sampler', 'flowmatch'),
-                        ('sample_every', 10000), # set a large number to disable sampling
+                        ('sample_every', 250),
                         ('width', 1024),
                         ('height', 1024),
-                        ('prompts', ['a woman holding a coffee cup']),
+                        ('prompts', ['woman with red hair, playing chess at the park, bomb going off in the background']),
                         ('neg', ''),
                         ('seed', seed),
                         ('walk_seed', True),
                         ('guidance_scale', 4),
-                        ('sample_steps', 20)
+                        ('sample_steps', 25),
+                        ('num_frames', 1),
+                        ('fps', 1)
                     ]))
                 ])
             ])
