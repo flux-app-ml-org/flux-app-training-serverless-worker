@@ -2,9 +2,9 @@
 
 ## Build
 
-This project uses Github Actions. To build, push to the `build` branch
+This project uses Github Actions. To build, push to the `main` branch
 ```bash
-git checkout build
+git checkout main
 git rebase origin/master
 git push
 ```
