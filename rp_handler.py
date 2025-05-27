@@ -462,7 +462,7 @@ def get_config(name: str, dataset_dir: str, output_dir: str, steps: int = 1000, 
                             ('weight_decay', 0.0001)
                         ])),
                         ('unload_text_encoder', False),
-                        ('lr', 1e-4),
+                        ('lr', 4e-4),
                         ('ema_config', OrderedDict([
                             ('use_ema', True),
                             ('ema_decay', 0.99)
