@@ -14,7 +14,7 @@ WORKDIR /app
 ARG CACHEBUST=1
 RUN git clone https://github.com/ostris/ai-toolkit.git && \
     cd ai-toolkit && \
-    git checkout fa187b1 && \
+    git checkout ffaf2f1 && \
     git submodule update --init --recursive
 
 # Production stage
