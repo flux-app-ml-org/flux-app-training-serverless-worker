@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Prompt for the tag
-read -p "Enter the tag for the Docker image: " tag
+# Accept tag as command line argument
+tag="$1"
 
 # Check if a tag was provided
 if [ -z "$tag" ]; then
-  echo "Error: No tag provided."
+  echo "Error: No tag provided. Usage: $0 <tag>"
   exit 1
 fi
 

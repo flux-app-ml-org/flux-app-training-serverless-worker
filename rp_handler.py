@@ -188,7 +188,7 @@ def handler(job):
             if output:
                 output_line = output.strip()
                 output_lines.append(output_line)
-                logger.info("Training output", extra={"line": output_line})
+                logger.info(output_line, extra={"subprocess": True})
         
         # Wait for process to complete and get return code
         return_code = process.poll()
