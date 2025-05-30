@@ -177,8 +177,29 @@ def setup_mocks(temp_dir):
     # Keep real PIL.Image for actual image operations
     original_pil_open = PILImage.open
     
-    # Mock subprocess.run to avoid actually running the command
-    rp_handler.subprocess.run = MagicMock(return_value=MagicMock(returncode=0, stdout="Success", stderr=""))
+    # Mock subprocess.Popen to avoid actually running the command
+    class MockProcess:
+        def __init__(self):
+            self.output_lines = ["Training output line 1", "Training output line 2"]
+            self.current_line = 0
+            self.return_code = 0
+            
+        def readline(self):
+            if self.current_line < len(self.output_lines):
+                line = self.output_lines[self.current_line] + "\n"
+                self.current_line += 1
+                return line
+            return ""  # Return empty string when no more lines
+            
+        def poll(self):
+            # Return None while there are still lines to read, then return the exit code
+            if self.current_line < len(self.output_lines):
+                return None
+            return self.return_code
+    
+    mock_process = MockProcess()
+    mock_process.stdout = mock_process  # stdout.readline() calls the readline method
+    rp_handler.subprocess.Popen = MagicMock(return_value=mock_process)
     
     # Set environment variables
     os.environ["SAVE_MODEL_TO_FS_PATH"] = os.path.join(temp_dir, "models")
@@ -307,9 +328,9 @@ def test_handler_valid_input(setup_mocks, mock_requests):
             # Check steps value specifically
             assert process["train"]["steps"] == EXPECTED_CONFIG_VALUES["default_steps"]
         
-        # Verify subprocess.run was called with the correct parameters
-        rp_handler.subprocess.run.assert_called_once()
-        cmd_args = rp_handler.subprocess.run.call_args[0][0]
+        # Verify subprocess.Popen was called with the correct parameters
+        rp_handler.subprocess.Popen.assert_called_once()
+        cmd_args = rp_handler.subprocess.Popen.call_args[0][0]
         assert cmd_args[0] == "python"
         assert cmd_args[1].endswith("run.py")
         assert cmd_args[2] == config_path
@@ -524,9 +545,28 @@ def test_subprocess_failure(setup_mocks, mock_requests):
         }
     }
     
-    # Mock subprocess.run to return a failure
-    mock_process = MagicMock(returncode=1, stdout="", stderr="Command failed")
-    with patch('rp_handler.subprocess.run', return_value=mock_process):
+    # Mock subprocess.Popen to return a failure
+    class MockFailureProcess:
+        def __init__(self):
+            self.output_lines = ["Error output line"]
+            self.current_line = 0
+            self.return_code = 1
+            
+        def readline(self):
+            if self.current_line < len(self.output_lines):
+                line = self.output_lines[self.current_line] + "\n"
+                self.current_line += 1
+                return line
+            return ""
+            
+        def poll(self):
+            if self.current_line < len(self.output_lines):
+                return None
+            return self.return_code
+    
+    mock_process = MockFailureProcess()
+    mock_process.stdout = mock_process
+    with patch('rp_handler.subprocess.Popen', return_value=mock_process):
         with patch('rp_handler.run_captioning', return_value=["Test caption"]):
             # Call the handler
             result = rp_handler.handler(job)

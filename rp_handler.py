@@ -40,7 +40,14 @@ else:
 
             for attr in vars(record):
                 if attr not in log_record:
-                    log_record[attr] = getattr(record, attr)
+                    value = getattr(record, attr)
+                    # Convert non-JSON-serializable objects to strings
+                    try:
+                        json.dumps(value)  # Test if it's JSON serializable
+                        log_record[attr] = value
+                    except (TypeError, ValueError):
+                        # Convert to string if not JSON serializable
+                        log_record[attr] = str(value)
 
             return json.dumps(log_record)
 
@@ -161,17 +168,41 @@ def handler(job):
         logger.debug("Clearing cuda cache")
         torch.cuda.empty_cache()
         logger.info("Running command", extra={"cmd": " ".join(cmd)})
-        process = subprocess.run(cmd, capture_output=True, text=True)
         
-        if process.returncode != 0:
+        # Use Popen to capture output in real-time
+        process = subprocess.Popen(
+            cmd, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.STDOUT,  # Redirect stderr to stdout to capture both
+            text=True,
+            bufsize=1,  # Line buffered
+            universal_newlines=True
+        )
+        
+        # Stream and log output in real-time
+        output_lines = []
+        while True:
+            output = process.stdout.readline()
+            if output == '' and process.poll() is not None:
+                break
+            if output:
+                output_line = output.strip()
+                output_lines.append(output_line)
+                logger.info("Training output", extra={"line": output_line})
+        
+        # Wait for process to complete and get return code
+        return_code = process.poll()
+        
+        if return_code != 0:
+            full_output = '\n'.join(output_lines)
             logger.error("Command failed", extra={
-                "returncode": process.returncode,
-                "stdout": process.stdout,
-                "stderr": process.stderr
+                "returncode": return_code,
+                "output": full_output
             })
-            raise Exception(f"Training failed with exit code {process.returncode}: {process.stderr}")
+            raise Exception(f"Training failed with exit code {return_code}")
         
-        logger.info("Command completed successfully", extra={"stdout": process.stdout})
+        full_output = '\n'.join(output_lines)
+        logger.info("Command completed successfully", extra={"output": full_output})
 
         files_to_delete = ['config.yaml', 'optimizer.pt']
         logger.info("Cleaning up files", extra={"files": files_to_delete})
@@ -349,7 +380,7 @@ def run_captioning(images, concept_sentence, *captions):
 
         logger.debug("Generating caption for image", extra={"image_index": i})
         captions[i] = generate_caption_for_image(image, processor, model, device, torch_dtype, concept_sentence)
-        logger.info("Caption generated successfully", extra={"image_index": i, "caption_length": len(captions[i])})
+        logger.info("Caption generated successfully", extra={"image_index": i, "caption_length": len(captions[i]), "caption": captions[i]})
 
     logger.info("Captioning process completed", extra={"num_images": len(images)})
     logger.debug("Cleaning up model resources")
