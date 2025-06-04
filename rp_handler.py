@@ -510,7 +510,7 @@ def get_config(name: str, dataset_dir: str, output_dir: str, steps: int = 1000, 
                         ('quantize', True),
                         ('quantize_te', True),
                         ('arch', 'flux'),
-                        ('low_vram', False)
+                        ('low_vram', True)
                     ])),
                     ('sample', OrderedDict([
                         ('sampler', 'flowmatch'),
