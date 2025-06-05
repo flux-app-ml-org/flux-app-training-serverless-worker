@@ -18,6 +18,25 @@
       ],
       "justMyCode": true,
       "postDebugTask": "docker-compose-debug-down",
+    },
+    {
+      "name": "Python: Debug Tests",
+      "type": "python",
+      "request": "launch",
+      "program": "-m",
+      "args": [
+        "pytest",
+        "-xvs",
+        "tests/",
+        "-p",
+        "no:cov"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "purpose": ["debug-test"],
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
     }
   ]
 }
