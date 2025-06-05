@@ -125,9 +125,7 @@ def handler(job):
             return {"error": "name must be a non-empty string"}
         
         # Process valid input
-        captions = [""] * len(image_urls)
-
-        dataset_folder = create_captioned_dataset(image_urls, False, *captions)
+        dataset_folder, captions = create_captioned_dataset(image_urls, False)
         config = get_config(name, dataset_folder, SAVE_MODEL_TO_FS_PATH)
         
         # Save config as YAML in the dataset folder
@@ -331,14 +329,13 @@ def clean_caption(cap, replacements=None):
     cap = ", ".join(cap_list)
     return cap
 
-def run_captioning(images, concept_sentence, *captions):
+def run_captioning(images, concept_sentence):
     """
     Generate captions for a list of images using the Florence-2 model.
     
     Args:
         images (list): List of image URLs
         concept_sentence (str): Concept sentence to append to captions if needed
-        *captions: Initial captions for each image (will be replaced with generated ones)
     
     Returns:
         list: Generated captions for each image
@@ -364,7 +361,7 @@ def run_captioning(images, concept_sentence, *captions):
         logger.error("Failed to load model or processor", extra={"error": str(e), "model_name": model_name})
         raise
 
-    captions = list(captions)
+    captions = [""] * len(images)  # Create captions list
     for i, image_url in enumerate(images):
         logger.info(f"Processing image", extra={"image_url": image_url, "n": i+1, "count": len(images)})
         try:
@@ -375,7 +372,7 @@ def run_captioning(images, concept_sentence, *captions):
             logger.debug("Image downloaded and converted successfully", extra={"image_url": image_url, "image_size": image.size})
         except Exception as e:
             logger.error("Error loading image", extra={"image_url": image_url, "error": str(e)})
-            captions[i] = "Error loading image"
+            captions[i] = ""
             continue
 
         logger.debug("Generating caption for image", extra={"image_index": i})
@@ -399,39 +396,33 @@ def create_dataset(images, captions):
         os.makedirs(destination_folder)
         logger.debug("Created directory", extra={"directory": destination_folder})
 
-    jsonl_file_path = os.path.join(destination_folder, "metadata.jsonl")
-    with open(jsonl_file_path, "a") as jsonl_file:
-        for index, image_url in enumerate(images):
-            try:
-                response = requests.get(image_url)
-                response.raise_for_status()
-                image = Image.open(BytesIO(response.content)).convert("RGB")
-                local_image_path = os.path.join(destination_folder, f"image_{index}.jpg")
-                image.save(local_image_path)
-                logger.debug("Saved image", extra={"path": os.path.abspath(local_image_path), "relative_path": local_image_path})
-            except Exception as e:
-                logger.error("Error saving image", extra={"image_url": image_url, "error": str(e)})
-                continue
+    for index, image_url in enumerate(images):
+        try:
+            response = requests.get(image_url)
+            response.raise_for_status()
+            image = Image.open(BytesIO(response.content)).convert("RGB")
+            local_image_path = os.path.join(destination_folder, f"image_{index}.jpg")
+            image.save(local_image_path)
+            logger.debug("Saved image", extra={"path": os.path.abspath(local_image_path), "relative_path": local_image_path})
+        except Exception as e:
+            logger.error("Error saving image", extra={"image_url": image_url, "error": str(e)})
+            continue
 
-            original_caption = captions[index]
-            file_name = os.path.basename(local_image_path)
-            
-            # Save the caption to a text file with the same name as the image
-            caption_file_path = os.path.join(destination_folder, f"image_{index}.txt")
-            with open(caption_file_path, "w") as caption_file:
-                caption_file.write(original_caption)
-                logger.debug("Saved caption", extra={"path": os.path.abspath(caption_file_path), "relative_path": caption_file_path})
-
-            data = {"file_name": file_name, "prompt": original_caption}
-            jsonl_file.write(json.dumps(data) + "\n")
-            logger.debug("Written metadata", extra={"data": data, "path": os.path.abspath(jsonl_file_path), "relative_path": jsonl_file_path})
+        original_caption = captions[index]
+        
+        # Save the caption to a text file with the same name as the image
+        caption_file_path = os.path.join(destination_folder, f"image_{index}.txt")
+        with open(caption_file_path, "w") as caption_file:
+            caption_file.write(original_caption)
+            logger.debug("Saved caption", extra={"path": os.path.abspath(caption_file_path), "relative_path": caption_file_path})
 
     logger.info("Dataset created", extra={"path": os.path.abspath(destination_folder), "relative_path": destination_folder})
     return destination_folder
 
-def create_captioned_dataset(image_urls, concept_sentence, *captions):
-    final_captions = run_captioning(image_urls, concept_sentence, *captions)
-    return create_dataset(image_urls, final_captions)
+def create_captioned_dataset(image_urls, concept_sentence):
+    captions = run_captioning(image_urls, concept_sentence)  # Updates captions in place
+    dataset_folder = create_dataset(image_urls, captions)
+    return (dataset_folder, captions)
 
 def get_config(name: str, dataset_dir: str, output_dir: str, steps: int = 1000, seed: int = 42):
     # example workflow https://github.com/ostris/ai-toolkit/blob/main/config/examples/train_lora_flux_24gb.yaml

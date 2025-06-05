@@ -20,48 +20,6 @@ sys.modules['loki_logger_handler.loki_logger_handler'] = MagicMock()
 # Now we can safely import the module
 import rp_handler
 
-# Create mock classes for complex objects
-class MockTensor:
-    def __init__(self, *args, **kwargs):
-        pass
-    
-    def to(self, *args, **kwargs):
-        return self
-
-class MockProcessorOutput:
-    def __init__(self):
-        self.data = {"input_ids": MockTensor(), "pixel_values": MockTensor()}
-    
-    def __getitem__(self, key):
-        return self.data[key]
-    
-    def to(self, *args, **kwargs):
-        return self
-
-class MockModel:
-    def __init__(self, *args, **kwargs):
-        pass
-    
-    def to(self, device):
-        return self
-    
-    def generate(self, **kwargs):
-        return [1, 2, 3]  # Dummy token IDs
-
-class MockProcessor:
-    def __init__(self, *args, **kwargs):
-        pass
-    
-    def __call__(self, **kwargs):
-        return MockProcessorOutput()
-    
-    def batch_decode(self, ids, **kwargs):
-        return ["Generated text"]
-    
-    def post_process_generation(self, text, **kwargs):
-        return {"<DETAILED_CAPTION>": "The image shows a person"}
-
-
 class MockResponse:
     def __init__(self, content=None, status_code=200):
         # Create a small test image if content is None
@@ -169,14 +127,6 @@ def setup_mocks(temp_dir):
     rp_handler.torch.float16 = "float16"
     rp_handler.torch.cuda.empty_cache = MagicMock()
     
-    # Mock model and processor
-    mock_model = MockModel()
-    rp_handler.AutoModelForCausalLM.from_pretrained = MagicMock(return_value=mock_model)
-    rp_handler.AutoProcessor.from_pretrained = MagicMock(return_value=MockProcessor())
-    
-    # Keep real PIL.Image for actual image operations
-    original_pil_open = PILImage.open
-    
     # Mock subprocess.Popen to avoid actually running the command
     class MockProcess:
         def __init__(self):
@@ -224,22 +174,10 @@ def setup_mocks(temp_dir):
             caption_file_path = os.path.join(dataset_dir, f"image_{index}.txt")
             with open(caption_file_path, "w") as caption_file:
                 caption_file.write(captions[index])
-            
-            # Create metadata entry
-            jsonl_file_path = os.path.join(dataset_dir, "metadata.jsonl")
-            with open(jsonl_file_path, "a") as jsonl_file:
-                data = {"file_name": f"image_{index}.jpg", "prompt": captions[index]}
-                jsonl_file.write(json.dumps(data) + "\n")
         
         return dataset_dir
     
     rp_handler.create_dataset = mock_create_dataset
-    
-    # Mock run_captioning to return predictable captions
-    def mock_run_captioning(images, concept_sentence, *captions):
-        return [f"Caption for image {i}" for i in range(len(images))]
-    
-    rp_handler.run_captioning = mock_run_captioning
     
     yield {
         "temp_dir": temp_dir,
@@ -247,7 +185,6 @@ def setup_mocks(temp_dir):
     
     # Restore original functions
     rp_handler.create_dataset = original_create_dataset
-    PILImage.open = original_pil_open
 
 @pytest.fixture
 def mock_requests():
@@ -294,19 +231,6 @@ def test_handler_valid_input(setup_mocks, mock_requests):
                 file_content = f.read()
                 assert file_content == expected_caption
         
-        # Verify metadata file was created and contains expected content
-        metadata_path = os.path.join(dataset_path, "metadata.jsonl")
-        assert os.path.exists(metadata_path)
-        
-        with open(metadata_path, "r") as f:
-            metadata_lines = f.readlines()
-            assert len(metadata_lines) == len(expected_captions)
-            
-            for i, line in enumerate(metadata_lines):
-                entry = json.loads(line)
-                assert entry["prompt"] == expected_captions[i]
-                assert entry["file_name"] == f"image_{i}.jpg"
-        
         # Verify config.yaml was created and contains the expected content
         config_path = os.path.join(dataset_path, "config.yaml")
         assert os.path.exists(config_path)
@@ -335,57 +259,71 @@ def test_handler_valid_input(setup_mocks, mock_requests):
         assert cmd_args[1].endswith("run.py")
         assert cmd_args[2] == config_path
 
-def test_create_captioned_dataset_content(setup_mocks, mock_requests):
-    """Test that the captions are correctly written to text files"""
-    image_urls = ["https://example.com/image1.jpg", "https://example.com/image2.jpg"]
+# def test_create_captioned_dataset_content(setup_mocks, mock_requests):
+#     """Test that the captions are correctly written to text files"""
+#     image_urls = ["https://example.com/image1.jpg", "https://example.com/image2.jpg"]
     
-    # Create specific test captions
-    test_captions = ["Test caption for image 0", "Test caption for image 1"]
+#     # Create specific test captions
+#     test_captions = ["Test caption for image 0", "Test caption for image 1"]
     
-    # Mock the run_captioning function to return our test captions
-    with patch('rp_handler.run_captioning', return_value=test_captions):
-        # Call the function
-        dataset_folder = rp_handler.create_captioned_dataset(image_urls, False)
+#     # Mock the run_captioning function to return our test captions
+#     with patch('rp_handler.run_captioning', return_value=test_captions):
+#         # Call the function
+#         dataset_folder, captions = rp_handler.create_captioned_dataset(image_urls, False)
         
-        # Verify the dataset was created
-        assert os.path.exists(dataset_folder)
+#         # Verify the dataset was created
+#         assert os.path.exists(dataset_folder)
         
-        # Verify the content of the caption files matches our test captions
-        for i, caption in enumerate(test_captions):
-            caption_file_path = os.path.join(dataset_folder, f"image_{i}.txt")
-            assert os.path.exists(caption_file_path)
+#         # Verify the content of the caption files matches our test captions
+#         for i, caption in enumerate(test_captions):
+#             caption_file_path = os.path.join(dataset_folder, f"image_{i}.txt")
+#             assert os.path.exists(caption_file_path)
             
-            with open(caption_file_path, "r") as f:
-                file_content = f.read()
-                assert file_content == caption
+#             with open(caption_file_path, "r") as f:
+#                 file_content = f.read()
+#                 assert file_content == caption
         
-        # Verify metadata file contains our captions
-        metadata_path = os.path.join(dataset_folder, "metadata.jsonl")
-        assert os.path.exists(metadata_path)
+#         # Verify metadata file contains our captions
+#         metadata_path = os.path.join(dataset_folder, "metadata.jsonl")
+#         assert os.path.exists(metadata_path)
         
-        with open(metadata_path, "r") as f:
-            metadata_lines = f.readlines()
-            assert len(metadata_lines) == len(test_captions)
+#         with open(metadata_path, "r") as f:
+#             metadata_lines = f.readlines()
+#             assert len(metadata_lines) == len(test_captions)
             
-            for i, line in enumerate(metadata_lines):
-                entry = json.loads(line)
-                assert entry["prompt"] == test_captions[i]
-                assert entry["file_name"] == f"image_{i}.jpg"
+#             for i, line in enumerate(metadata_lines):
+#                 entry = json.loads(line)
+#                 assert entry["prompt"] == test_captions[i]
+#                 assert entry["file_name"] == f"image_{i}.jpg"
 
-def test_generate_caption_for_image(setup_mocks):
+@pytest.fixture
+def mock_cuda():
+    with patch('torch.cuda') as mock_cuda:
+        mock_cuda.is_available.return_value = True
+        mock_cuda.empty_cache = MagicMock()
+        yield mock_cuda
+
+@pytest.fixture
+def mock_image_generation():
+    with patch('PIL.Image.open') as mock_open:
+        # Create a real test image for consistent testing
+        test_image = PILImage.new('RGB', (100, 100), color='red')
+        mock_open.return_value = test_image
+        yield test_image
+
+def test_generate_caption_for_image(mock_cuda, mock_image_generation):
     """Test the single image captioning function"""
-    # Create a test image
     test_image = PILImage.new('RGB', (100, 100), color='red')
     
-    # Create mock processor and model
-    mock_processor = MockProcessor()
-    mock_model = MockModel()
+    # Create minimal mocks for processor and model
+    mock_processor = MagicMock()
+    mock_model = MagicMock()
     
-    # Set up the expected return value for post_process_generation
+    # Set up the expected behavior
     expected_caption = "a beautiful sunset over mountains"
-    mock_processor.post_process_generation = MagicMock(
-        return_value={"<DETAILED_CAPTION>": f"The image shows {expected_caption}"}
-    )
+    mock_processor.post_process_generation.return_value = {
+        "<DETAILED_CAPTION>": f"The image shows {expected_caption}"
+    }
     
     # Test without concept_sentence
     caption = rp_handler.generate_caption_for_image(
@@ -398,6 +336,85 @@ def test_generate_caption_for_image(setup_mocks):
         test_image, mock_processor, mock_model, "cuda", "float16", True
     )
     assert caption_with_trigger == f"{expected_caption} [trigger]"
+    
+    # Verify processor and model were called correctly
+    mock_processor.assert_called_with(
+        text="<DETAILED_CAPTION>", 
+        images=test_image, 
+        return_tensors="pt"
+    )
+    mock_model.generate.assert_called()
+
+def test_run_captioning_end_to_end(mock_cuda, mock_image_generation, temp_dir):
+    """Test the full captioning pipeline with mocked model components"""
+    # Setup test data
+    image_urls = ["https://example.com/image1.jpg", "https://example.com/image2.jpg"]
+    
+    # Mock the model and processor
+    with patch('transformers.AutoModelForCausalLM.from_pretrained') as mock_model_cls, \
+         patch('transformers.AutoProcessor.from_pretrained') as mock_processor_cls, \
+         patch('requests.get') as mock_get:
+        
+        # Setup mock responses
+        mock_get.return_value = MockResponse()
+        
+        # Setup model and processor behavior
+        mock_model = MagicMock()
+        mock_processor = MagicMock()
+        mock_model_cls.return_value = mock_model
+        mock_processor_cls.return_value = mock_processor
+        
+        # Configure processor to return specific captions
+        mock_processor.post_process_generation.side_effect = [
+            {"<DETAILED_CAPTION>": "The image shows a person walking"},
+            {"<DETAILED_CAPTION>": "The image shows a sunset"}
+        ]
+        
+        # Run the captioning
+        result_captions = rp_handler.run_captioning(image_urls, False)
+        
+        # Verify results
+        assert len(result_captions) == 2
+        assert result_captions[0] == "a person walking"
+        assert result_captions[1] == "a sunset"
+        
+        # Verify model and processor were used correctly
+        assert mock_model_cls.call_count == 1
+        assert mock_processor_cls.call_count == 1
+        assert mock_processor.post_process_generation.call_count == 2
+        
+        # Verify CUDA usage
+        mock_cuda.empty_cache.assert_called_once()
+
+def test_create_dataset_structure(temp_dir, mock_image_generation):
+    """Test that dataset is created with correct structure"""
+    images = ["https://example.com/image1.jpg", "https://example.com/image2.jpg"]
+    captions = ["Test caption 1", "Test caption 2"]
+    
+    with patch('requests.get') as mock_get:
+        mock_get.return_value = MockResponse()
+        
+        # Create dataset
+        dataset_folder = rp_handler.create_dataset(images, captions)
+        
+        # Verify structure
+        assert os.path.exists(dataset_folder)
+        
+        # Check image files
+        for i in range(2):
+            image_path = os.path.join(dataset_folder, f"image_{i}.jpg")
+            assert os.path.exists(image_path)
+            
+            # Verify image content
+            img = PILImage.open(image_path)
+            assert img.size == (100, 100)
+            
+            # Check caption files
+            caption_path = os.path.join(dataset_folder, f"image_{i}.txt")
+            assert os.path.exists(caption_path)
+            
+            with open(caption_path, 'r') as f:
+                assert f.read() == captions[i]
 
 def test_handler_missing_required_fields(setup_mocks):
     # Test with missing required fields
@@ -457,31 +474,34 @@ def test_create_captioned_dataset(setup_mocks, mock_requests):
     # Test the create_captioned_dataset function directly
     image_urls = ["https://example.com/image1.jpg", "https://example.com/image2.jpg"]
     
-    # Call the function
-    dataset_folder = rp_handler.create_captioned_dataset(image_urls, False)
-    
-    # Verify the dataset was created
-    assert os.path.exists(dataset_folder)
-    
-    # Verify image files were created
-    assert os.path.exists(os.path.join(dataset_folder, "image_0.jpg"))
-    assert os.path.exists(os.path.join(dataset_folder, "image_1.jpg"))
-    
-    # Verify caption files were created
-    assert os.path.exists(os.path.join(dataset_folder, "image_0.txt"))
-    assert os.path.exists(os.path.join(dataset_folder, "image_1.txt"))
-    
-    # Verify metadata file was created
-    assert os.path.exists(os.path.join(dataset_folder, "metadata.jsonl"))
-    
-    # Verify the content of the caption files
-    with open(os.path.join(dataset_folder, "image_0.txt"), "r") as f:
-        caption_0 = f.read()
-    with open(os.path.join(dataset_folder, "image_1.txt"), "r") as f:
-        caption_1 = f.read()
-    
-    assert caption_0 == "Caption for image 0"
-    assert caption_1 == "Caption for image 1"
+    # Mock run_captioning to return predictable captions
+    expected_captions = ["Caption for image 0", "Caption for image 1"]
+    with patch('rp_handler.run_captioning', return_value=expected_captions):
+        # Call the function
+        dataset_folder, captions = rp_handler.create_captioned_dataset(image_urls, False)
+        
+        # Verify the dataset was created
+        assert os.path.exists(dataset_folder)
+        
+        # Verify image files were created
+        assert os.path.exists(os.path.join(dataset_folder, "image_0.jpg"))
+        assert os.path.exists(os.path.join(dataset_folder, "image_1.jpg"))
+        
+        # Verify caption files were created
+        assert os.path.exists(os.path.join(dataset_folder, "image_0.txt"))
+        assert os.path.exists(os.path.join(dataset_folder, "image_1.txt"))
+        
+        # Verify the returned captions match expected
+        assert captions == expected_captions
+        
+        # Verify the content of the caption files
+        with open(os.path.join(dataset_folder, "image_0.txt"), "r") as f:
+            caption_0 = f.read()
+        with open(os.path.join(dataset_folder, "image_1.txt"), "r") as f:
+            caption_1 = f.read()
+        
+        assert caption_0 == "Caption for image 0"
+        assert caption_1 == "Caption for image 1"
 
 def test_get_config(setup_mocks):
     # Test the get_config function
@@ -582,7 +602,7 @@ def test_run_captioning_successful(mock_logger, setup_mocks, mock_requests):
     original_run_captioning = rp_handler.run_captioning
     
     # Define a new implementation for testing
-    def test_implementation(images, concept_sentence, *captions):
+    def test_implementation(images, concept_sentence):
         # Log calls to verify logging
         mock_logger.info("Starting image captioning process", extra={"num_images": len(images)})
         mock_logger.info("Loading Florence-2 model and processor", 
@@ -606,10 +626,9 @@ def test_run_captioning_successful(mock_logger, setup_mocks, mock_requests):
         # Setup
         images = ["https://example.com/image1.jpg", "https://example.com/image2.jpg"]
         concept_sentence = False
-        initial_captions = ["", ""]
         
         # Call the function
-        result = rp_handler.run_captioning(images, concept_sentence, *initial_captions)
+        result = rp_handler.run_captioning(images, concept_sentence)
         
         # Assertions
         assert result == ["Generated caption 1", "Generated caption 2"]
@@ -636,7 +655,7 @@ def test_run_captioning_image_error(mock_logger, setup_mocks):
     original_run_captioning = rp_handler.run_captioning
     
     # Define a new implementation for testing
-    def test_implementation(images, concept_sentence, *captions):
+    def test_implementation(images, concept_sentence):
         # Log calls to verify logging
         mock_logger.info("Starting image captioning process", extra={"num_images": len(images)})
         
@@ -655,10 +674,9 @@ def test_run_captioning_image_error(mock_logger, setup_mocks):
         # Setup
         images = ["https://example.com/valid.jpg", "https://example.com/invalid.jpg"]
         concept_sentence = False
-        initial_captions = ["", ""]
         
         # Call the function
-        result = rp_handler.run_captioning(images, concept_sentence, *initial_captions)
+        result = rp_handler.run_captioning(images, concept_sentence)
         
         # Assertions
         assert result[0] == "Generated caption"  # First image should have a caption
@@ -679,7 +697,7 @@ def test_run_captioning_model_loading_error(mock_logger, setup_mocks):
     original_run_captioning = rp_handler.run_captioning
     
     # Define a new implementation for testing
-    def test_implementation(images, concept_sentence, *captions):
+    def test_implementation(images, concept_sentence):
         # Log the error
         mock_logger.error("Failed to load model or processor", 
                          extra={"error": "Failed to load model", 
@@ -695,11 +713,10 @@ def test_run_captioning_model_loading_error(mock_logger, setup_mocks):
         # Setup
         images = ["https://example.com/image1.jpg"]
         concept_sentence = False
-        initial_captions = [""]
         
         # Call the function and expect exception
         with pytest.raises(Exception) as excinfo:
-            rp_handler.run_captioning(images, concept_sentence, *initial_captions)
+            rp_handler.run_captioning(images, concept_sentence)
         
         # Verify error message
         assert "Failed to load model" in str(excinfo.value)
@@ -712,3 +729,88 @@ def test_run_captioning_model_loading_error(mock_logger, setup_mocks):
     finally:
         # Restore the original function
         rp_handler.run_captioning = original_run_captioning
+
+def test_handler_caption_logging(setup_mocks, mock_requests):
+    """Test that generated captions are properly logged"""
+    # Test with valid input
+    job = {
+        "id": "test-job-id",
+        "input": {
+            "images": ["https://example.com/image1.jpg", "https://example.com/image2.jpg"],
+            "name": "test-model",
+            "gender": "F"
+        }
+    }
+    
+    # Mock the run_captioning function to return predictable captions
+    expected_captions = ["Expected caption for image 0", "Expected caption for image 1"]
+    
+    with patch('rp_handler.run_captioning', return_value=expected_captions):
+        with patch('rp_handler.logger') as mock_logger:
+            # Call the handler
+            result = rp_handler.handler(job)
+            
+            # Find the "Saved config" log call
+            saved_config_calls = [
+                call for call in mock_logger.info.call_args_list
+                if call[0][0] == "Saved config"
+            ]
+            
+            # Verify that there's exactly one "Saved config" call
+            assert len(saved_config_calls) == 1
+            
+            # Get the call and verify its contents
+            call_args, call_kwargs = saved_config_calls[0]
+            assert call_args[0] == "Saved config"
+            
+            extra = call_kwargs.get('extra', {})
+            assert extra.get('job_name') == "test-model"
+            assert extra.get('captions') == expected_captions
+            assert 'config_path' in extra
+            assert 'dataset_folder_path' in extra
+            assert 'dataset_folder_relative_path' in extra
+
+def test_run_captioning_image_loading_failure(mock_cuda, mock_image_generation, temp_dir):
+    """Test that run_captioning sets empty string captions when image loading fails"""
+    # Setup test data with one valid and one invalid URL
+    image_urls = ["https://example.com/valid.jpg", "https://example.com/invalid.jpg"]
+    
+    # Mock the model and processor
+    with patch('transformers.AutoModelForCausalLM.from_pretrained') as mock_model_cls, \
+         patch('transformers.AutoProcessor.from_pretrained') as mock_processor_cls, \
+         patch('requests.get') as mock_get:
+        
+        # Setup model and processor behavior
+        mock_model = MagicMock()
+        mock_processor = MagicMock()
+        mock_model_cls.return_value = mock_model
+        mock_processor_cls.return_value = mock_processor
+        
+        # Configure processor to return a caption for successful images
+        mock_processor.post_process_generation.return_value = {
+            "<DETAILED_CAPTION>": "The image shows a person walking"
+        }
+        
+        # Mock requests.get to succeed for first URL and fail for second
+        def mock_get_side_effect(url):
+            if url == "https://example.com/valid.jpg":
+                return MockResponse()  # Successful response
+            else:
+                # Simulate HTTP error for invalid URL by raising an exception
+                raise Exception("HTTP Error: 404")
+        
+        mock_get.side_effect = mock_get_side_effect
+        
+        # Run the captioning
+        result_captions = rp_handler.run_captioning(image_urls, False)
+        
+        # Verify results
+        assert len(result_captions) == 2
+        assert result_captions[0] == "a person walking"  # First image should have a caption
+        assert result_captions[1] == ""  # Second image should have empty string due to loading failure
+        
+        # Verify that requests.get was called for both URLs
+        assert mock_get.call_count == 2
+        
+        # Verify that the processor was only called once (for the successful image)
+        assert mock_processor.post_process_generation.call_count == 1
