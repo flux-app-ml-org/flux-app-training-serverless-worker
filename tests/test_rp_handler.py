@@ -62,7 +62,7 @@ EXPECTED_CONFIG_VALUES = {
     "gradient_checkpointing": True,
     "noise_scheduler": "flowmatch",
     "optimizer": "adamw8bit",
-    "lr": 4e-4,
+    "lr": 1e-4,
     "disable_sampling": True,
     "ema_use": True,
     "ema_decay": 0.99,
