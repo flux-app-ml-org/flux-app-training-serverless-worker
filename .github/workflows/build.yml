@@ -4,10 +4,29 @@ on:
   push:
     branches:
       - main
+    # Skip builds for documentation-only changes
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
+  # Allow manual triggering with option to skip build
+  workflow_dispatch:
+    inputs:
+      skip_build:
+        description: 'Skip the build step'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Skip if commit message contains [skip ci] or [ci skip]
+    if: "!contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, '[ci skip]')"
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -35,6 +54,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
     needs: test  # This ensures build only runs after tests pass
+    # Skip build if:
+    # 1. Commit message contains [skip ci] or [ci skip]
+    # 2. Manual dispatch with skip_build = true
+    # 3. Commit message contains [skip build]
+    if: |
+      !contains(github.event.head_commit.message, '[skip ci]') && 
+      !contains(github.event.head_commit.message, '[ci skip]') && 
+      !contains(github.event.head_commit.message, '[skip build]') &&
+      (github.event_name != 'workflow_dispatch' || github.event.inputs.skip_build != 'true')
     # Permissions to use OIDC token authentication
     permissions:
       contents: read
