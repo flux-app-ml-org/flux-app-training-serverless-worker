@@ -420,7 +420,7 @@ def create_dataset(images, captions):
     return destination_folder
 
 def create_captioned_dataset(image_urls, concept_sentence):
-    captions = run_captioning(image_urls, concept_sentence)  # Updates captions in place
+    captions = run_captioning(image_urls, concept_sentence)
     dataset_folder = create_dataset(image_urls, captions)
     return (dataset_folder, captions)
 
