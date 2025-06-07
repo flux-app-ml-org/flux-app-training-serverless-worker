@@ -144,7 +144,7 @@ def handler(job):
         regular_dict_config = convert_ordered_dict_to_dict(config)
         
         with open(config_path, 'w') as f:
-            yaml.dump(regular_dict_config, f)
+            yaml.dump(regular_dict_config, f, sort_keys=False)
         
         logger.info(
             "Saved config",
@@ -290,6 +290,7 @@ def clean_caption(cap, replacements=None):
         ("the image is", ""),
         ("in this image", ""),
         ("in the image", ""),
+        ("gigi hadid", "a woman"),
     ]
         
     if replacements is None:
@@ -484,7 +485,7 @@ def get_config(name: str, dataset_dir: str, output_dir: str, steps: int = 1000, 
                             ('weight_decay', 0.0001)
                         ])),
                         ('unload_text_encoder', False),
-                        ('lr', 1e-4),
+                        ('lr', 0.0004),
                         ('ema_config', OrderedDict([
                             ('use_ema', True),
                             ('ema_decay', 0.99)
