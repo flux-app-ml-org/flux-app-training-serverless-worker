@@ -55,7 +55,7 @@ EXPECTED_CONFIG_VALUES = {
     "cache_latents_to_disk": False,
     "resolution": [512, 768, 1024],
     "batch_size": 1,
-    "default_steps": 1000,
+    "default_steps": 2000,
     "gradient_accumulation": 1,
     "train_unet": True,
     "train_text_encoder": False,
@@ -67,7 +67,7 @@ EXPECTED_CONFIG_VALUES = {
     "ema_use": True,
     "ema_decay": 0.99,
     "dtype": "bf16",
-    "model_name": "black-forest-labs/FLUX.1-dev",
+    "model_name": "/workspace/flux",
     "arch": "flux",
     "quantize": True
 }
