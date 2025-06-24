@@ -425,7 +425,7 @@ def create_captioned_dataset(image_urls, concept_sentence):
     dataset_folder = create_dataset(image_urls, captions)
     return (dataset_folder, captions)
 
-def get_config(name: str, dataset_dir: str, output_dir: str, steps: int = 2000, seed: int = 42):
+def get_config(name: str, dataset_dir: str, output_dir: str, steps: int = 1500, seed: int = 42):
     # example workflow https://github.com/ostris/ai-toolkit/blob/main/config/examples/train_lora_flux_24gb.yaml
     # TODO: allow passing config as job input
     # TODO: we are saving some `optimizer.pt` along with `.safetensors` - this is not needed, research how to remove
@@ -485,7 +485,7 @@ def get_config(name: str, dataset_dir: str, output_dir: str, steps: int = 2000, 
                             ('weight_decay', 0.0001)
                         ])),
                         ('unload_text_encoder', False),
-                        ('lr', 0.0004),
+                        ('lr', 0.0001),
                         ('ema_config', OrderedDict([
                             ('use_ema', True),
                             ('ema_decay', 0.99)
