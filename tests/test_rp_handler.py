@@ -67,7 +67,7 @@ EXPECTED_CONFIG_VALUES = {
     "ema_use": True,
     "ema_decay": 0.99,
     "dtype": "bf16",
-    "model_name": "/workspace/flux",
+    "model_name": "black-forest-labs/FLUX.1-dev",
     "arch": "flux",
     "quantize": True
 }

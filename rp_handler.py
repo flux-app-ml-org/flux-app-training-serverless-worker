@@ -498,7 +498,7 @@ def get_config(name: str, dataset_dir: str, output_dir: str, steps: int = 2000, 
                         ('disable_sampling', True),
                     ])),
                     ('model', OrderedDict([
-                        ('name_or_path', '/workspace/flux'),
+                        ('name_or_path', 'black-forest-labs/FLUX.1-dev'),
                         ('quantize', True),
                         ('quantize_te', True),
                         ('arch', 'flux'),
