@@ -10,7 +10,7 @@ from io import BytesIO
 from loki_logger_handler.loki_logger_handler import LokiLoggerHandler
 import sys
 from collections import OrderedDict
-from PIL import Image
+from PIL import Image, ImageOps
 import torch
 from transformers import AutoProcessor, AutoModelForCausalLM
 import uuid
@@ -59,6 +59,7 @@ else:
 
 REFRESH_WORKER = os.environ.get("REFRESH_WORKER", "false").lower() == "true"
 SAVE_MODEL_TO_FS_PATH = os.environ.get("SAVE_MODEL_TO_FS_PATH", '/runpod-volume/models/loras')
+IMAGE_QUALITY = int(os.environ.get("IMAGE_QUALITY", 95))
 
 class DictFilter(logging.Filter):
     def __init__(self, extra_dict=None):
@@ -369,7 +370,9 @@ def run_captioning(images, concept_sentence):
             logger.debug("Downloading image", extra={"image_url": image_url})
             response = requests.get(image_url)
             response.raise_for_status()
-            image = Image.open(BytesIO(response.content)).convert("RGB")
+            image = Image.open(BytesIO(response.content))
+            image = ImageOps.exif_transpose(image)
+            image = image.convert("RGB")
             logger.debug("Image downloaded and converted successfully", extra={"image_url": image_url, "image_size": image.size})
         except Exception as e:
             logger.error("Error loading image", extra={"image_url": image_url, "error": str(e)})
@@ -401,9 +404,11 @@ def create_dataset(images, captions):
         try:
             response = requests.get(image_url)
             response.raise_for_status()
-            image = Image.open(BytesIO(response.content)).convert("RGB")
+            image = Image.open(BytesIO(response.content))
+            image = ImageOps.exif_transpose(image)
+            image = image.convert("RGB")
             local_image_path = os.path.join(destination_folder, f"image_{index}.jpg")
-            image.save(local_image_path)
+            image.save(local_image_path, quality=IMAGE_QUALITY)
             logger.debug("Saved image", extra={"path": os.path.abspath(local_image_path), "relative_path": local_image_path})
         except Exception as e:
             logger.error("Error saving image", extra={"image_url": image_url, "error": str(e)})
