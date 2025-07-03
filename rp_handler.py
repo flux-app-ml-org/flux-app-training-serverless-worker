@@ -503,7 +503,7 @@ def get_config(name: str, dataset_dir: str, output_dir: str, steps: int = 1500, 
                         ('disable_sampling', True),
                     ])),
                     ('model', OrderedDict([
-                        ('name_or_path', 'black-forest-labs/FLUX.1-dev'),
+                        ('name_or_path', '/runpod-volume/flux'),
                         ('quantize', True),
                         ('quantize_te', True),
                         ('arch', 'flux'),
