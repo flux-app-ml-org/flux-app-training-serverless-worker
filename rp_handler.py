@@ -455,7 +455,7 @@ def get_config(name: str, dataset_dir: str, output_dir: str, steps: int = 1500, 
                     ])),
                     ('save', OrderedDict([
                         ('dtype', 'bf16'),
-                        ('save_every', 1000),
+                        ('save_every', 1500),
                         ('max_step_saves_to_keep', 1),
                         ('save_format', 'diffusers'),
                         ('push_to_hub', False)
